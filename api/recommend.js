@@ -39,6 +39,23 @@ function httpsPost(url, token, data) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+function normalizeFilterArray(input, ignoredValues = []) {
+    const ignoredSet = new Set(ignoredValues.map((v) => String(v).trim().toLowerCase()));
+    let values = [];
+
+    if (Array.isArray(input)) {
+        values = input;
+    } else if (typeof input === 'string') {
+        values = input.split(',');
+    }
+
+    return [...new Set(
+        values
+            .map((value) => String(value).trim())
+            .filter((value) => value && !ignoredSet.has(value.toLowerCase()))
+    )];
+}
+
 module.exports = async function handler(req, res) {
     res.setHeader('Content-Type', 'application/json');
 
@@ -51,28 +68,42 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ error: 'OPENROUTER_API_KEY не налаштований. Додайте його до .env.local або у Vercel.' });
     }
 
-    const { year, genre, wishes } = req.body || {};
+    const { year, genre, years, genres, wishes } = req.body || {};
     if (!wishes) {
         return res.status(200).json({ error: 'Відсутнє поле: wishes' });
     }
 
-    const prompt = `Ти кінобаза та експерт. Твоє завдання - підібрати перелік (від 3 до 10) РЕАЛЬНИХ ІСНУЮЧИХ фільмів, які відповідають критеріям користувача.
-ВАЖЛИВІ ПРАВИЛА:
-1. Тільки ті фільми, що дійсно існують і вийшли у світ.
-2. ОБОВ'ЯЗКОВИЙ Рік виходу: ${year}. Фільм обов'язково має бути випущений у цьому діапазоні дат! Ніколи не пропонуй фільми інших років.
-3. Жанр: ${genre}.
-4. Сюжет/Побажання: "${wishes}". Постарайся знайти якомога більше фільмів (до 10), сюжет яких максимально наближений до цього побажання. Допускаються невеликі відхилення в деталях (наприклад, просто пара або друзі замість сім'ї), якщо загальна атмосфера (природа, небезпека) зберігається. 
+    const selectedYears = normalizeFilterArray(years ?? year, ['any', 'будь-який рік', 'не має значення']);
+    const selectedGenres = normalizeFilterArray(genres ?? genre, ['any', 'будь-який жанр', 'не має значення']);
 
-Поверни СУТО JSON масив об'єктів. БЕЗ форматування markdown.
-Кожен об'єкт має містити:
-'title' (точна оригінальна англійська назва, як на IMDb).
-'year' (тільки 4 цифри, наприклад "2023").
-'plot' (детальний правдивий опис фільму УКРАЇНСЬКОЮ мовою).
+    const yearRule = selectedYears.length > 0
+        ? `Роки (строго): ${selectedYears.join(', ')}. Відповідь має містити тільки ці роки.`
+        : 'Роки: без обмежень.';
+    const genreRule = selectedGenres.length > 0
+        ? `Жанри (строго): ${selectedGenres.join(', ')}. Кожен фільм повинен відповідати хоча б одному із цих жанрів.`
+        : 'Жанри: без обмежень.';
 
-Приклад відповіді:
-[
-  {"title": "Dune: Part Two", "year": "2024", "plot": "Пол Атрід об'єднується з фременами..."}
-]`;
+    const prompt = `Ти експерт з підбору фільмів. Поверни список РЕАЛЬНИХ, ІСНУЮЧИХ ПОВНОМЕТРАЖНИХ ФІЛЬМІВ (не серіали), які максимально відповідають запиту.
+
+Запит користувача:
+- Теми/атмосфера: "${wishes}"
+- ${yearRule}
+- ${genreRule}
+
+Жорсткі правила:
+1) Не вигадуй назви, роки або сюжети. Тільки реальні фільми.
+2) Якщо задані роки - не виходь за межі цих років.
+3) Якщо задані жанри - кожен фільм має підходити щонайменше під один із жанрів.
+4) Тематична близькість до запиту обов'язкова: відкидай слабко релевантні варіанти.
+5) Вкажи оригінальну англійську назву точно як на IMDb.
+
+Поверни ТІЛЬКИ JSON-масив без markdown. Кількість: від 6 до 14 фільмів (або менше, якщо строгі критерії сильно обмежують вибір).
+Кожен елемент:
+{
+  "title": "Original English Title",
+  "year": "2023",
+  "plot": "Короткий правдивий опис українською (2-3 речення)"
+}`;
 
     let allErrors = [];
 
@@ -80,7 +111,7 @@ module.exports = async function handler(req, res) {
         const payload = {
             model: model,
             messages: [{ role: "user", content: prompt }],
-            temperature: 0.7
+            temperature: 0.25
         };
 
         let result;

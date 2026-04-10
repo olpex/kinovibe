@@ -1,9 +1,9 @@
 export default async function handler(req, res) {
-    const { title, year } = req.query;
+    const { title, year, imdbID } = req.query;
     if (!title) return res.redirect('/');
 
-    // Формуємо запит: Назва Рік дивитися онлайн українською hd
-    const query = `${title} ${year && year !== 'N/A' ? year : ''} дивитися онлайн українською hd`.trim();
+    const safeYear = year && year !== 'N/A' ? year : '';
+    const query = `${imdbID ? `${imdbID} ` : ''}"${title}" ${safeYear} дивитися онлайн українською`.trim();
     
     try {
         // Робимо "невидимий" запит під капотом до базової HTML-версії пошуковика
@@ -15,14 +15,21 @@ export default async function handler(req, res) {
         
         const html = await response.text();
         
-        // Знаходимо перше реальне посилання у видачі за допомогою регулярного виразу
         // DuckDuckGo ховає лінки у форматі href="//duckduckgo.com/l/?uddg=РЕАЛЬНИЙ_ЛІНК"
-        const match = html.match(/href="\/\/duckduckgo\.com\/l\/\?uddg=([^"&]+)/);
-        
-        if (match && match[1]) {
-            // Декодуємо URL (наприклад з https%3A%2F%2Fukrflix.com...) і робимо миттєвий редирект!
-            const finalUrl = decodeURIComponent(match[1]);
-            return res.redirect(302, finalUrl);
+        const rawMatches = Array.from(html.matchAll(/href="\/\/duckduckgo\.com\/l\/\?uddg=([^"&]+)/g));
+        const decodedUrls = rawMatches.map((item) => {
+            try {
+                return decodeURIComponent(item[1]);
+            } catch {
+                return item[1];
+            }
+        });
+
+        if (decodedUrls.length > 0) {
+            const preferred = decodedUrls.find((url) =>
+                !/imdb\.com|wikipedia\.org|rottentomatoes\.com/i.test(url)
+            );
+            return res.redirect(302, preferred || decodedUrls[0]);
         }
 
         // Якщо нічого не знайшли - фолбек на звичайний пошук (але з такою логікою це рідкість)

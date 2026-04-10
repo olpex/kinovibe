@@ -344,6 +344,121 @@
         const OMDb_KEY = '541f2a60'; // Вшитий ключ
 
         const GENRES = ["Комедія", "Драма", "Фантастика", "Екшн / Бойовик", "Жахи", "Трилер", "Мелодрама", "Кримінал", "Детектив", "Анімація", "Фентезі"];
+        const GENRE_TO_OMDB = {
+            "Комедія": ["comedy"],
+            "Драма": ["drama"],
+            "Фантастика": ["sci fi", "science fiction"],
+            "Екшн / Бойовик": ["action"],
+            "Жахи": ["horror"],
+            "Трилер": ["thriller"],
+            "Мелодрама": ["romance"],
+            "Кримінал": ["crime"],
+            "Детектив": ["mystery", "detective", "crime"],
+            "Анімація": ["animation"],
+            "Фентезі": ["fantasy"]
+        };
+        const THEME_STOP_WORDS = new Set([
+            "щоб","хочу","хочеться","мені","для","дуже","щось","щось","або","про","під","після","коли","тому","бо","такий","така","таке","та","і","й","але","чи","що","це","цей","ця",
+            "the","and","for","with","from","about","into","your","you","want","movie","film"
+        ]);
+
+        function normalizeText(value) {
+            return (value || '')
+                .toString()
+                .toLowerCase()
+                .normalize('NFKD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/['’`"]/g, '')
+                .replace(/[^a-zа-яіїєґ0-9\s]/giu, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function extractYearTokens(value) {
+            const matches = (value || '').toString().match(/\b(?:19|20)\d{2}\b/g);
+            return matches ? [...new Set(matches)] : [];
+        }
+
+        function getFirstYear(value) {
+            const years = extractYearTokens(value);
+            return years.length > 0 ? years[0] : null;
+        }
+
+        function mapGenresForOmdb(selectedGenres) {
+            const mapped = selectedGenres.flatMap((genre) => GENRE_TO_OMDB[genre] || [normalizeText(genre)]);
+            return [...new Set(mapped.map(normalizeText).filter(Boolean))];
+        }
+
+        function matchesYearFilter(movieYear, selectedYearSet) {
+            if (!selectedYearSet || selectedYearSet.size === 0) return true;
+            return extractYearTokens(movieYear).some((yearToken) => selectedYearSet.has(yearToken));
+        }
+
+        function matchesGenreFilter(movieGenre, selectedGenreTokens) {
+            if (!selectedGenreTokens || selectedGenreTokens.length === 0) return true;
+            const movieGenreTokens = (movieGenre || '')
+                .split(',')
+                .map((item) => normalizeText(item))
+                .filter(Boolean);
+            if (movieGenreTokens.length === 0) return false;
+            return selectedGenreTokens.some((selectedToken) =>
+                movieGenreTokens.some((movieToken) => movieToken.includes(selectedToken) || selectedToken.includes(movieToken))
+            );
+        }
+
+        function extractThemeKeywords(wishes) {
+            const tokens = normalizeText(wishes)
+                .split(' ')
+                .filter((token) => token.length >= 4 && !THEME_STOP_WORDS.has(token));
+            return [...new Set(tokens)].slice(0, 14);
+        }
+
+        function extractThemePhrases(wishes) {
+            return wishes
+                .split(/[,.!?;:]+/)
+                .map((part) => normalizeText(part))
+                .filter((part) => part.length >= 8 && part.split(' ').length >= 2)
+                .slice(0, 6);
+        }
+
+        function getThemeMatchInfo(movie, themeKeywords, themePhrases) {
+            if (themeKeywords.length === 0 && themePhrases.length === 0) {
+                return { isMatch: true, score: 1, keywordHits: 0, phraseHits: 0 };
+            }
+
+            const haystack = normalizeText(`${movie.title} ${movie.omdbPlot || ''} ${movie.aiPlotUA || ''} ${movie.omdbGenre || ''}`);
+            if (!haystack) return { isMatch: false, score: 0, keywordHits: 0, phraseHits: 0 };
+
+            let keywordHits = 0;
+            let phraseHits = 0;
+
+            themeKeywords.forEach((keyword) => {
+                if (haystack.includes(keyword)) keywordHits += 1;
+            });
+            themePhrases.forEach((phrase) => {
+                if (haystack.includes(phrase)) phraseHits += 1;
+            });
+
+            const weightedTotal = themeKeywords.length + themePhrases.length * 2;
+            const weightedHits = keywordHits + phraseHits * 2;
+            const score = weightedTotal > 0 ? weightedHits / weightedTotal : 0;
+            const minKeywordHits = themeKeywords.length >= 8 ? 2 : themeKeywords.length >= 1 ? 1 : 0;
+            const isMatch = phraseHits > 0 || keywordHits >= minKeywordHits || score >= 0.18;
+
+            return { isMatch, score, keywordHits, phraseHits };
+        }
+
+        function deduplicateMovies(movies) {
+            const uniqueMap = new Map();
+            movies.forEach((movie) => {
+                const key = movie.imdbID || `${normalizeText(movie.title)}_${getFirstYear(movie.year) || 'na'}`;
+                const existing = uniqueMap.get(key);
+                if (!existing || (movie.relevanceScore || 0) > (existing.relevanceScore || 0)) {
+                    uniqueMap.set(key, movie);
+                }
+            });
+            return Array.from(uniqueMap.values());
+        }
 
         function init() {
             populateYears();
@@ -502,25 +617,26 @@
             }
             const selectedYearEls = Array.from(ELEMENTS.yearCheckboxList.querySelectorAll('input:checked')).map(el => el.value).filter(val => val !== 'any');
             const selectedGenreEls = Array.from(ELEMENTS.genreCheckboxList.querySelectorAll('input:checked')).map(el => el.value).filter(val => val !== 'any');
-            const selectedYears = selectedYearEls.length > 0 ? selectedYearEls.join(', ') : 'Не має значення';
-            const selectedGenres = selectedGenreEls.length > 0 ? selectedGenreEls.join(', ') : 'Не має значення';
             ELEMENTS.yearDropdownMenu.classList.add('hidden');
             ELEMENTS.genreDropdownMenu.classList.add('hidden');
-            await processRecommendation(selectedYears, selectedGenres, wishes);
+            await processRecommendation(selectedYearEls, selectedGenreEls, wishes);
         });
 
-        async function processRecommendation(year, genre, wishes) {
+        async function processRecommendation(selectedYears, selectedGenres, wishes) {
             showLoader('Нейромережі генерують підбірку...');
             try {
-                const aiData = await fetchFromAI(year, genre, wishes);
+                const aiData = await fetchFromAI(selectedYears, selectedGenres, wishes);
                 if (!aiData || aiData.length === 0) {
                     throw new Error('ШІ не зміг знайти жодного фільму під вказані критерії (спробуйте трохи розширити вибір років або жанрів).');
                 }
-                showLoader('Шукаємо круті постери та рейтинги...');
-                const omdbResult = await fetchDetailsFromOMDb(aiData);
-                const moviesWithDetails = omdbResult.moviesWithDetails;
-                if (moviesWithDetails.length === 0) throw new Error('Не вдалося завантажити жодного результату з бази кіно.');
+                showLoader('Перевіряємо точність за темами, жанром і роком...');
+                const omdbResult = await fetchDetailsFromOMDb(aiData, { selectedYears, selectedGenres, wishes });
+                const moviesWithDetails = deduplicateMovies(omdbResult.moviesWithDetails);
+                if (moviesWithDetails.length === 0) throw new Error('За цими темами, жанром і роком точних збігів не знайдено. Спробуйте трохи розширити запит.');
                 moviesWithDetails.sort((a, b) => {
+                    const relevanceA = isNaN(parseFloat(a.relevanceScore)) ? 0 : parseFloat(a.relevanceScore);
+                    const relevanceB = isNaN(parseFloat(b.relevanceScore)) ? 0 : parseFloat(b.relevanceScore);
+                    if (relevanceB !== relevanceA) return relevanceB - relevanceA;
                     let ratingA = isNaN(parseFloat(a.imdbRating)) ? 0 : parseFloat(a.imdbRating);
                     let ratingB = isNaN(parseFloat(b.imdbRating)) ? 0 : parseFloat(b.imdbRating);
                     return ratingB - ratingA;
@@ -533,12 +649,20 @@
             }
         }
 
-        async function fetchFromAI(year, genre, wishes) {
+        async function fetchFromAI(years, genres, wishes) {
+            const yearText = years.length > 0 ? years.join(', ') : 'Не має значення';
+            const genreText = genres.length > 0 ? genres.join(', ') : 'Не має значення';
             try {
                 const response = await fetchWithRetry('/api/recommend', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ year, genre, wishes })
+                    body: JSON.stringify({
+                        years,
+                        genres,
+                        year: yearText,
+                        genre: genreText,
+                        wishes
+                    })
                 });
                 const data = await response.json();
                 if (data.error) throw new Error(data.error);
@@ -551,45 +675,63 @@
             }
         }
 
-        async function fetchDetailsFromOMDb(aiMovies) {
+        async function fetchDetailsFromOMDb(aiMovies, filters = {}) {
+            const selectedYearSet = new Set((filters.selectedYears || []).map((year) => String(year)));
+            const selectedGenreTokens = mapGenresForOmdb(filters.selectedGenres || []);
+            const themeKeywords = extractThemeKeywords(filters.wishes || '');
+            const themePhrases = extractThemePhrases(filters.wishes || '');
+
             const promises = aiMovies.map(async (movie) => {
                 if (!movie.title) return null;
-                const fallbackMovie = { title: movie.title, originalTitleFromGemini: movie.title, year: movie.year || "N/A", poster: "https://via.placeholder.com/300x450/222222/4b5563?text=Постер+Відсутній", imdbRating: "-", imdbID: "", plotUA: movie.plot };
                 try {
-                    const yearParam = movie.year ? `&y=${encodeURIComponent(movie.year)}` : '';
+                    const aiYear = getFirstYear(movie.year);
+                    const yearParam = aiYear ? `&y=${encodeURIComponent(aiYear)}` : '';
                     let url = `https://www.omdbapi.com/?apikey=${OMDb_KEY}&t=${encodeURIComponent(movie.title)}${yearParam}&type=movie`;
                     let response = await fetchWithRetry(url);
                     let data = await response.json();
                     
                     // Якщо з роком не знайдено, пробуємо без року (можливо рік в базі відрізняється на 1)
-                    if (data.Response !== "True" && movie.year) {
+                    if (data.Response !== "True" && aiYear) {
                         url = `https://www.omdbapi.com/?apikey=${OMDb_KEY}&t=${encodeURIComponent(movie.title)}&type=movie`;
                         response = await fetchWithRetry(url);
                         data = await response.json();
                     }
 
-                    if (data.Response === "True") {
-                        let isValidMatch = true;
-                        if (movie.year) {
-                            const aiYear = parseInt(movie.year.toString().substring(0, 4));
-                            const omdbYear = parseInt(data.Year.substring(0, 4));
-                            // Відхиляємо знахідку OMDb, якщо різниця в роках більше ніж 1 (уникаємо підміни однойменними старими фільмами)
-                            if (!isNaN(aiYear) && !isNaN(omdbYear) && Math.abs(aiYear - omdbYear) > 1) {
-                                isValidMatch = false;
-                            }
+                    if (data.Response !== "True") return null;
+
+                    const omdbPrimaryYear = getFirstYear(data.Year);
+                    if (aiYear && omdbPrimaryYear) {
+                        const aiYearNum = parseInt(aiYear, 10);
+                        const omdbYearNum = parseInt(omdbPrimaryYear, 10);
+                        if (!isNaN(aiYearNum) && !isNaN(omdbYearNum) && Math.abs(aiYearNum - omdbYearNum) > 1) {
+                            return null;
                         }
-                        
-                        if (isValidMatch) {
-                            return { title: data.Title, originalTitleFromGemini: movie.title, year: data.Year, poster: data.Poster !== "N/A" ? data.Poster : fallbackMovie.poster, imdbRating: data.imdbRating !== "N/A" ? data.imdbRating : "-", imdbID: data.imdbID, plotUA: movie.plot };
-                        } else {
-                            return fallbackMovie;
-                        }
-                    } else {
-                        // Якщо зовсім не знайдено - повертаємо заглушку замість null
-                        return fallbackMovie; 
                     }
+
+                    const movieCandidate = {
+                        title: data.Title,
+                        year: data.Year || movie.year || "N/A",
+                        poster: data.Poster !== "N/A" ? data.Poster : "https://via.placeholder.com/300x450/222222/4b5563?text=Постер+Відсутній",
+                        imdbRating: data.imdbRating !== "N/A" ? data.imdbRating : "-",
+                        imdbID: data.imdbID || "",
+                        omdbGenre: data.Genre !== "N/A" ? data.Genre : "",
+                        omdbPlot: data.Plot !== "N/A" ? data.Plot : "",
+                        aiPlotUA: movie.plot || "",
+                        displayPlot: data.Plot !== "N/A" ? data.Plot : (movie.plot || "Опис відсутній.")
+                    };
+
+                    if (!matchesYearFilter(movieCandidate.year, selectedYearSet)) return null;
+                    if (!matchesGenreFilter(movieCandidate.omdbGenre, selectedGenreTokens)) return null;
+
+                    const themeInfo = getThemeMatchInfo(movieCandidate, themeKeywords, themePhrases);
+                    if (!themeInfo.isMatch) return null;
+
+                    return {
+                        ...movieCandidate,
+                        relevanceScore: Number(themeInfo.score.toFixed(3))
+                    };
                 } catch (e) {
-                    return fallbackMovie;
+                    return null;
                 }
             });
             const results = await Promise.all(promises);
@@ -612,13 +754,13 @@
                 node.querySelector('.card-year').textContent = movie.year;
                 node.querySelector('.card-title').textContent = movie.title;
                 node.querySelector('.card-title').title = movie.title;
-                node.querySelector('.card-plot').textContent = movie.plotUA;
+                node.querySelector('.card-plot').textContent = movie.displayPlot || movie.aiPlotUA || 'Опис відсутній.';
                 
                 if (movie.imdbID) node.querySelector('.card-imdb-btn').href = `https://www.imdb.com/title/${movie.imdbID}/`;
                 else node.querySelector('.card-imdb-btn').href = `https://www.imdb.com/find?q=${encodeURIComponent(movie.title)}`;
 
                 // Власний API-ендпоінт: він робить невидимий серверний запит, парсить видачу, знаходить лінк і миттєво перекидає користувача
-                node.querySelector('.card-watch-btn').href = `/api/watch?title=${encodeURIComponent(movie.title)}&year=${encodeURIComponent(movie.year !== 'N/A' ? movie.year : '')}`;
+                node.querySelector('.card-watch-btn').href = `/api/watch?title=${encodeURIComponent(movie.title)}&year=${encodeURIComponent(movie.year !== 'N/A' ? movie.year : '')}&imdbID=${encodeURIComponent(movie.imdbID || '')}`;
                 
                 fragment.appendChild(node);
             });
