@@ -551,19 +551,28 @@
         async function fetchDetailsFromOMDb(aiMovies) {
             const promises = aiMovies.map(async (movie) => {
                 if (!movie.title) return null;
-                const fallbackMovie = { title: movie.title, originalTitleFromGemini: movie.title, year: movie.year || "N/A", poster: "https://via.placeholder.com/300x450/1f2937/4b5563?text=Постер+Відсутній", imdbRating: "-", imdbID: "", plotUA: movie.plot };
+                const fallbackMovie = { title: movie.title, originalTitleFromGemini: movie.title, year: movie.year || "N/A", poster: "https://via.placeholder.com/300x450/222222/4b5563?text=Постер+Відсутній", imdbRating: "-", imdbID: "", plotUA: movie.plot };
                 try {
                     const yearParam = movie.year ? `&y=${encodeURIComponent(movie.year)}` : '';
-                    const url = `https://www.omdbapi.com/?apikey=${OMDb_KEY}&t=${encodeURIComponent(movie.title)}${yearParam}&type=movie`;
-                    const response = await fetchWithRetry(url);
-                    const data = await response.json();
+                    let url = `https://www.omdbapi.com/?apikey=${OMDb_KEY}&t=${encodeURIComponent(movie.title)}${yearParam}&type=movie`;
+                    let response = await fetchWithRetry(url);
+                    let data = await response.json();
+                    
+                    // Якщо з роком не знайдено, пробуємо без року (можливо рік в базі відрізняється на 1)
+                    if (data.Response !== "True" && movie.year) {
+                        url = `https://www.omdbapi.com/?apikey=${OMDb_KEY}&t=${encodeURIComponent(movie.title)}&type=movie`;
+                        response = await fetchWithRetry(url);
+                        data = await response.json();
+                    }
+
                     if (data.Response === "True") {
                         return { title: data.Title, originalTitleFromGemini: movie.title, year: data.Year, poster: data.Poster !== "N/A" ? data.Poster : fallbackMovie.poster, imdbRating: data.imdbRating !== "N/A" ? data.imdbRating : "-", imdbID: data.imdbID, plotUA: movie.plot };
                     } else {
-                        return null; // не знайдено
+                        // Якщо зовсім не знайдено - повертаємо заглушку замість null
+                        return fallbackMovie; 
                     }
                 } catch (e) {
-                    return null;
+                    return fallbackMovie;
                 }
             });
             const results = await Promise.all(promises);
