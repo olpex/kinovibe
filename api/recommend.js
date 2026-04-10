@@ -85,7 +85,7 @@ function normalizeModelResponse(text) {
             year: typeof item.year === 'string' || typeof item.year === 'number' ? String(item.year).trim() : '',
             plot: typeof item.plot === 'string' ? item.plot.trim() : ''
         }))
-        .filter((item) => item.title && item.year);
+        .filter((item) => item.title);
 }
 
 module.exports = async function handler(req, res) {

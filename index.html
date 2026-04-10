@@ -794,10 +794,11 @@
                     }
 
                     const omdbPrimaryYear = getFirstYear(cachedOmdbData.year);
-                    if (hasYearFilter && aiYear && omdbPrimaryYear) {
+                    if (aiYear && omdbPrimaryYear && !hasYearFilter) {
                         const aiYearNum = parseInt(aiYear, 10);
                         const omdbYearNum = parseInt(omdbPrimaryYear, 10);
-                        if (!isNaN(aiYearNum) && !isNaN(omdbYearNum) && Math.abs(aiYearNum - omdbYearNum) > 1) {
+                        // Без вибраного року лишаємо м'який захист від підміни однойменними фільмами.
+                        if (!isNaN(aiYearNum) && !isNaN(omdbYearNum) && Math.abs(aiYearNum - omdbYearNum) > 3) {
                             return null;
                         }
                     }
