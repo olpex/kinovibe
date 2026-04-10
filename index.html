@@ -486,36 +486,21 @@
         }
 
         async function fetchFromGemini(year, genre, wishes) {
-            const apiKey = "AIzaSyBJBpRSwrrfddEeT2UsLaJMuItavev6RCE";
-            const MODELS = [
-                'gemini-2.5-flash',
-                'gemini-2.0-flash',
-                'gemini-2.0-flash-lite'
-            ];
-            const prompt = `Підбери 16 фільмів, які ідеально відповідають цим критеріям користувача.\nРік виходу: ${year}.\nЖанр: ${genre}.\nОсобисті побажання користувача: "${wishes}".\n\nПоверни СУТО JSON масив об'єктів. БЕЗ форматування markdown, БЕЗ пояснень. Тільки валідний JSON.\nКожен об'єкт має містити два ключі:\n'title' (точна офіційна англійська назва фільму, як в базі IMDb).\n'plot' (цікавий і детальний опис фільму УКРАЇНСЬКОЮ мовою).\n\nПриклад відповіді:\n[\n  {"title": "The Matrix", "plot": "Культовий фільм про хакера Нео..."},\n  {"title": "Inception", "plot": "Злодій, який краде корпоративні секрети..."}\n]`;
-            const payload = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7 } };
-            let lastError;
-            for (const model of MODELS) {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-                try {
-                    const response = await fetchWithRetry(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    const data = await response.json();
-                    const textResponse = data.candidates[0].content.parts[0].text;
-                    const cleanJsonStr = cleanJSONString(textResponse);
-                    const movies = JSON.parse(cleanJsonStr);
-                    if (!Array.isArray(movies)) throw new Error("ШІ повернув не масив.");
-                    return movies;
-                } catch (error) {
-                    if (error.message && error.message.includes('401')) throw new Error(`Недійсний Gemini API Key (Помилка 401).`);
-                    lastError = error;
-                    const msg = error.message || '';
-                    // переходимо до наступної моделі при перевантаженні або недоступності
-                    const isFallbackable = error.isRetryable || msg.includes('not found') || msg.includes('not supported');
-                    if (!isFallbackable) throw new Error(`Помилка під час запиту до Gemini: ${msg}`);
-                    // інакше — спробуємо наступну модель зі списку
-                }
+            try {
+                const response = await fetchWithRetry('/api/recommend', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ year, genre, wishes })
+                });
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+                const cleanJsonStr = cleanJSONString(data.text);
+                const movies = JSON.parse(cleanJsonStr);
+                if (!Array.isArray(movies)) throw new Error("ШІ повернув не масив.");
+                return movies;
+            } catch (error) {
+                throw new Error(`Помилка під час запиту до Gemini: ${error.message}`);
             }
-            throw new Error(`Сервери Google Gemini тимчасово недоступні. Спробуйте пізніше.`);
         }
 
         async function fetchDetailsFromOMDb(geminiMovies) {
