@@ -351,14 +351,14 @@
             "Комедія": ["comedy"],
             "Драма": ["drama"],
             "Фантастика": ["sci fi", "science fiction"],
-            "Екшн / Бойовик": ["action"],
+            "Екшн / Бойовик": ["action", "adventure"],
             "Жахи": ["horror"],
-            "Трилер": ["thriller"],
-            "Мелодрама": ["romance"],
+            "Трилер": ["thriller", "mystery", "crime"],
+            "Мелодрама": ["romance", "drama"],
             "Кримінал": ["crime"],
             "Детектив": ["mystery", "detective", "crime"],
             "Анімація": ["animation"],
-            "Фентезі": ["fantasy"]
+            "Фентезі": ["fantasy", "adventure"]
         };
         const THEME_STOP_WORDS = new Set([
             "щоб","хочу","хочеться","мені","для","дуже","щось","щось","або","про","під","після","коли","тому","бо","такий","така","таке","та","і","й","але","чи","що","це","цей","ця",
@@ -445,8 +445,7 @@
             const weightedTotal = themeKeywords.length + themePhrases.length * 2;
             const weightedHits = keywordHits + phraseHits * 2;
             const score = weightedTotal > 0 ? weightedHits / weightedTotal : 0;
-            const minKeywordHits = themeKeywords.length >= 8 ? 2 : themeKeywords.length >= 1 ? 1 : 0;
-            const isMatch = phraseHits > 0 || keywordHits >= minKeywordHits || score >= 0.18;
+            const isMatch = phraseHits > 0 || keywordHits >= 1 || score >= 0.08;
 
             return { isMatch, score, keywordHits, phraseHits };
         }
@@ -485,6 +484,18 @@
                 genres: sortedGenres,
                 wishes: normalizeText(wishes)
             });
+        }
+
+        function buildFallbackMoviesFromAI(aiMovies) {
+            return limitAiMovies(aiMovies, 6).map((movie) => ({
+                title: movie.title || 'Unknown title',
+                year: movie.year || 'N/A',
+                poster: "https://via.placeholder.com/300x450/222222/4b5563?text=Постер+Відсутній",
+                imdbRating: "-",
+                imdbID: "",
+                displayPlot: movie.plot || "Опис відсутній.",
+                relevanceScore: 0
+            }));
         }
 
         function init() {
@@ -673,8 +684,10 @@
                 const limitedAiMovies = limitAiMovies(aiData);
                 showLoader('Перевіряємо точність за темами, жанром і роком...');
                 const omdbResult = await fetchDetailsFromOMDb(limitedAiMovies, { selectedYears, selectedGenres, wishes });
-                const moviesWithDetails = deduplicateMovies(omdbResult.moviesWithDetails);
-                if (moviesWithDetails.length === 0) throw new Error('За цими темами, жанром і роком точних збігів не знайдено. Спробуйте трохи розширити запит.');
+                let moviesWithDetails = deduplicateMovies(omdbResult.moviesWithDetails);
+                if (moviesWithDetails.length === 0) {
+                    moviesWithDetails = buildFallbackMoviesFromAI(limitedAiMovies);
+                }
                 moviesWithDetails.sort((a, b) => {
                     const relevanceA = isNaN(parseFloat(a.relevanceScore)) ? 0 : parseFloat(a.relevanceScore);
                     const relevanceB = isNaN(parseFloat(b.relevanceScore)) ? 0 : parseFloat(b.relevanceScore);
@@ -730,6 +743,8 @@
             const selectedGenreTokens = mapGenresForOmdb(filters.selectedGenres || []);
             const themeKeywords = extractThemeKeywords(filters.wishes || '');
             const themePhrases = extractThemePhrases(filters.wishes || '');
+            const hasYearFilter = selectedYearSet.size > 0;
+            const hasGenreFilter = selectedGenreTokens.length > 0;
 
             const promises = aiMovies.map(async (movie) => {
                 if (!movie.title) return null;
@@ -772,7 +787,7 @@
                     }
 
                     const omdbPrimaryYear = getFirstYear(cachedOmdbData.year);
-                    if (aiYear && omdbPrimaryYear) {
+                    if (hasYearFilter && aiYear && omdbPrimaryYear) {
                         const aiYearNum = parseInt(aiYear, 10);
                         const omdbYearNum = parseInt(omdbPrimaryYear, 10);
                         if (!isNaN(aiYearNum) && !isNaN(omdbYearNum) && Math.abs(aiYearNum - omdbYearNum) > 1) {
@@ -786,22 +801,68 @@
                         displayPlot: cachedOmdbData.omdbPlot || movie.plot || "Опис відсутній."
                     };
 
-                    if (!matchesYearFilter(movieCandidate.year, selectedYearSet)) return null;
-                    if (!matchesGenreFilter(movieCandidate.omdbGenre, selectedGenreTokens)) return null;
-
                     const themeInfo = getThemeMatchInfo(movieCandidate, themeKeywords, themePhrases);
-                    if (!themeInfo.isMatch) return null;
+                    const passesYear = matchesYearFilter(movieCandidate.year, selectedYearSet);
+                    const passesGenre = matchesGenreFilter(movieCandidate.omdbGenre, selectedGenreTokens);
 
                     return {
                         ...movieCandidate,
-                        relevanceScore: Number(themeInfo.score.toFixed(3))
+                        relevanceScore: Number(themeInfo.score.toFixed(3)),
+                        themeIsMatch: themeInfo.isMatch,
+                        themeKeywordHits: themeInfo.keywordHits,
+                        themePhraseHits: themeInfo.phraseHits,
+                        passesYear,
+                        passesGenre
                     };
                 } catch (e) {
                     return null;
                 }
             });
-            const results = await Promise.all(promises);
-            return { moviesWithDetails: results.filter(movie => movie !== null) };
+            const results = (await Promise.all(promises)).filter((movie) => movie !== null);
+
+            if (results.length === 0) return { moviesWithDetails: [] };
+
+            const sortByQuality = (a, b) => {
+                const phraseDiff = (b.themePhraseHits || 0) - (a.themePhraseHits || 0);
+                if (phraseDiff !== 0) return phraseDiff;
+                const relA = isNaN(parseFloat(a.relevanceScore)) ? 0 : parseFloat(a.relevanceScore);
+                const relB = isNaN(parseFloat(b.relevanceScore)) ? 0 : parseFloat(b.relevanceScore);
+                if (relB !== relA) return relB - relA;
+                const ratingA = isNaN(parseFloat(a.imdbRating)) ? 0 : parseFloat(a.imdbRating);
+                const ratingB = isNaN(parseFloat(b.imdbRating)) ? 0 : parseFloat(b.imdbRating);
+                return ratingB - ratingA;
+            };
+
+            let selected = results
+                .filter((movie) => movie.passesYear && movie.passesGenre && movie.themeIsMatch)
+                .sort(sortByQuality);
+
+            if (selected.length === 0) {
+                selected = results
+                    .filter((movie) => movie.passesYear && movie.passesGenre)
+                    .sort(sortByQuality);
+            }
+
+            if (selected.length === 0 && hasYearFilter && hasGenreFilter) {
+                const yearOnly = results.filter((movie) => movie.passesYear).sort(sortByQuality);
+                const genreOnly = results.filter((movie) => movie.passesGenre).sort(sortByQuality);
+                selected = yearOnly.length >= genreOnly.length ? yearOnly : genreOnly;
+            }
+
+            if (selected.length === 0 && hasYearFilter) {
+                selected = results.filter((movie) => movie.passesYear).sort(sortByQuality);
+            }
+
+            if (selected.length === 0 && hasGenreFilter) {
+                selected = results.filter((movie) => movie.passesGenre).sort(sortByQuality);
+            }
+
+            if (selected.length === 0) {
+                selected = results.sort(sortByQuality);
+            }
+
+            const cleaned = selected.map(({ themeIsMatch, themeKeywordHits, themePhraseHits, passesYear, passesGenre, ...movie }) => movie);
+            return { moviesWithDetails: cleaned };
         }
 
         function renderMovies(movies) {
