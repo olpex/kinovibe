@@ -61,8 +61,7 @@ module.exports = async function handler(req, res) {
         const payload = {
             model: model,
             messages: [{ role: "user", content: prompt }],
-            temperature: 0.7,
-            response_format: { type: "json_object" } // Змушуємо деякі моделі віддавати чистий JSON
+            temperature: 0.7
         };
 
         try {
