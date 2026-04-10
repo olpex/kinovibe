@@ -513,10 +513,13 @@
             showLoader('Нейромережі генерують підбірку...');
             try {
                 const aiData = await fetchFromAI(year, genre, wishes);
+                if (!aiData || aiData.length === 0) {
+                    throw new Error('ШІ не зміг знайти жодного фільму під вказані критерії (спробуйте трохи розширити вибір років або жанрів).');
+                }
                 showLoader('Шукаємо круті постери та рейтинги...');
                 const omdbResult = await fetchDetailsFromOMDb(aiData);
                 const moviesWithDetails = omdbResult.moviesWithDetails;
-                if (moviesWithDetails.length === 0) throw new Error('Не вдалося знайти детальну інформацію про запропоновані фільми.');
+                if (moviesWithDetails.length === 0) throw new Error('Не вдалося завантажити жодного результату з бази кіно.');
                 moviesWithDetails.sort((a, b) => {
                     let ratingA = isNaN(parseFloat(a.imdbRating)) ? 0 : parseFloat(a.imdbRating);
                     let ratingB = isNaN(parseFloat(b.imdbRating)) ? 0 : parseFloat(b.imdbRating);
