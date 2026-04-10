@@ -603,9 +603,8 @@
                 if (movie.imdbID) node.querySelector('.card-imdb-btn').href = `https://www.imdb.com/title/${movie.imdbID}/`;
                 else node.querySelector('.card-imdb-btn').href = `https://www.imdb.com/find?q=${encodeURIComponent(movie.title)}`;
 
-                // DuckDuckGo "Мені пощастить" (через спеціальний маркер !ducky відбувається 100% невидимий редирект під капотом)
-                const queryTerm = `!ducky ${movie.title} ${movie.year !== 'N/A' ? movie.year : ''} дивитися онлайн українською`.trim();
-                node.querySelector('.card-watch-btn').href = `https://duckduckgo.com/?q=${encodeURIComponent(queryTerm)}`;
+                // Власний API-ендпоінт: він робить невидимий серверний запит, парсить видачу, знаходить лінк і миттєво перекидає користувача
+                node.querySelector('.card-watch-btn').href = `/api/watch?title=${encodeURIComponent(movie.title)}&year=${encodeURIComponent(movie.year !== 'N/A' ? movie.year : '')}`;
                 
                 fragment.appendChild(node);
             });
