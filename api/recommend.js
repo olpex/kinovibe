@@ -142,10 +142,6 @@ module.exports = async function handler(req, res) {
             } catch (e) {}
 
             return res.status(200).json({ text });
-
-        } catch (err) {
-            allErrors.push(`[${model}] ${err.message}`);
-        }
     }
 
     return res.status(200).json({ error: `Всі безкоштовні нейромережі недоступні. Деталі: ${allErrors.join(' | ')}` });
