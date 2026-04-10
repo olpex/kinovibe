@@ -1,11 +1,10 @@
 const https = require('https');
 
 const MODELS = [
+    'openrouter/free',
     'meta-llama/llama-3.3-70b-instruct:free',
     'nousresearch/hermes-3-llama-3.1-405b:free',
-    'nvidia/nemotron-3-super-120b-a12b:free',
-    'google/gemma-3-27b-it:free',
-    'qwen/qwen3-next-80b-a3b-instruct:free'
+    'google/gemma-3-27b-it:free'
 ];
 
 function httpsPost(url, token, data) {
@@ -35,6 +34,8 @@ function httpsPost(url, token, data) {
         req.end();
     });
 }
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 module.exports = async function handler(req, res) {
     res.setHeader('Content-Type', 'application/json');
@@ -81,23 +82,47 @@ module.exports = async function handler(req, res) {
             temperature: 0.7
         };
 
-        try {
-            const result = await httpsPost('https://openrouter.ai/api/v1/chat/completions', apiKey, payload);
-            let data;
-            try { data = JSON.parse(result.body); } catch { data = {}; }
+        let result;
+        let data;
+        let success = false;
+        
+        for (let retry = 0; retry < 3; retry++) {
+            try {
+                result = await httpsPost('https://openrouter.ai/api/v1/chat/completions', apiKey, payload);
+                try { data = JSON.parse(result.body); } catch { data = {}; }
 
-            if (result.status === 401) {
-                return res.status(200).json({ error: 'Недійсний OpenRouter API Key.' });
-            }
+                if (result.status === 401) {
+                    return res.status(200).json({ error: 'Недійсний OpenRouter API Key.' });
+                }
 
-            if (result.status !== 200) {
+                if (result.status === 200 && data?.choices?.[0]?.message?.content) {
+                    success = true;
+                    break;
+                }
+                
                 const msg = data?.error?.message || `HTTP ${result.status}`;
-                allErrors.push(`[${model}] ${msg}`);
-                continue;
+                if (msg.includes('Provider returned error') || msg.includes('overloaded') || result.status === 429 || result.status >= 500) {
+                    // Пауза 1 секунда перед ретраєм
+                    await sleep(1000);
+                } else {
+                    allErrors.push(`[${model}] ${msg}`);
+                    break;
+                }
+            } catch (e) {
+                allErrors.push(`[${model}] ${e.message}`);
+                break;
             }
+        }
+        
+        if (!success) {
+            if (data?.error?.message?.includes('Provider returned error')) {
+                allErrors.push(`[${model}] Provider returned error (retries exhausted)`);
+            }
+            continue;
+        }
 
-            let text = data?.choices?.[0]?.message?.content;
-            if (!text) { allErrors.push(`[${model}] порожня відповідь`); continue; }
+        let text = data.choices[0].message.content;
+        if (!text) { allErrors.push(`[${model}] порожня відповідь`); continue; }
 
             text = text.trim();
             if (text.startsWith('```json')) text = text.substring(7);
