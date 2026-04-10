@@ -357,12 +357,9 @@
                         <p class="card-plot text-gray-300 text-sm line-clamp-4 mb-6 leading-relaxed font-light drop-shadow-md"></p>
                         
                         <div class="flex flex-col gap-3">
-                            <a href="#" target="_blank" class="card-imdb-btn bg-white/10 hover:bg-white/20 backdrop-blur-lg border border-white/20 text-white font-medium py-2.5 px-4 rounded-xl text-center transition-colors text-sm flex justify-center items-center gap-2">
-                                <svg class="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 24 24"><path d="M22.09 10.3c.09-.81-.15-1.42-.71-1.84-.57-.42-1.3-.64-2.21-.64h-3.41v8.36h1.76V14h1.16l1.39 2.18h2.09l-1.63-2.48c.62-.21 1.07-.54 1.34-.98.28-.45.42-.99.42-1.62-.01-.36-.07-.63-.2-1.02zM19.4 12.6h-1.8v-1.6h1.8c.45 0 .76.12.94.35.17.23.26.54.26.93 0 .37-.09.67-.27.88-.17.21-.48.33-.93.34zm-8.89 3.58h1.76V7.82h-1.76v8.36zm-4.32 0h1.76v-5.6l2.1 5.6h1.6V7.82h-1.76v5.61l-2.11-5.61H4.43v8.36zM1.86 7.82H.1v8.36h1.76V7.82z"/></svg>
-                                IMDb Сторінка
-                            </a>
-                            <a href="#" target="_blank" class="card-tmdb-btn bg-primary hover:bg-primary/90 text-white font-medium py-2.5 px-4 rounded-xl text-center transition-colors text-sm shadow-[0_0_15px_rgba(99,102,241,0.4)]">
-                                Шукати Трейлер / Опис
+                            <a href="#" target="_blank" class="card-watch-btn bg-gradient-to-r from-primary to-accent hover:from-primary/80 hover:to-accent/80 text-white font-bold py-3 px-4 rounded-xl text-center transition-all transform hover:scale-105 active:scale-95 text-sm shadow-[0_0_20px_rgba(236,72,153,0.4)] flex justify-center items-center gap-2">
+                                <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                На перегляд
                             </a>
                         </div>
                     </div>
@@ -705,9 +702,8 @@
                 node.querySelector('.card-title').title = movie.title;
                 node.querySelector('.card-plot').textContent = movie.plotUA;
                 
-                if (movie.imdbID) node.querySelector('.card-imdb-btn').href = `https://www.imdb.com/title/${movie.imdbID}/`;
-                else node.querySelector('.card-imdb-btn').href = `https://www.imdb.com/find?q=${encodeURIComponent(movie.title)}`;
-                node.querySelector('.card-tmdb-btn').href = `https://www.youtube.com/results?search_query=${encodeURIComponent(movie.title)}+trailer`;
+                const searchQ = `${movie.title} (${movie.year !== 'N/A' ? movie.year : ''}) дивитися онлайн українською`;
+                node.querySelector('.card-watch-btn').href = `https://www.google.com/search?q=${encodeURIComponent(searchQ.replace(' ()', ''))}`;
                 
                 fragment.appendChild(node);
             });
