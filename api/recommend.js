@@ -7,10 +7,11 @@ const MODELS = [
     'openai/gpt-oss-120b:free'
 ];
 const REQUEST_TIMEOUT_MS = 18000;
-const MAX_MODELS_TO_TRY = 3;
+const MAX_MODELS_TO_TRY = 4;
 const MAX_RETRIES_PER_MODEL = 2;
 const RETRY_DELAY_MS = 450;
 const MIN_RECOMMENDATIONS = 4;
+const MAX_RECOMMENDATIONS = 10;
 
 function httpsPost(url, token, data, timeoutMs = REQUEST_TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
@@ -88,6 +89,26 @@ function normalizeModelResponse(text) {
         .filter((item) => item.title);
 }
 
+function normalizeYearToken(value) {
+    const match = String(value || '').match(/\b(?:19|20)\d{2}\b/);
+    return match ? match[0] : '';
+}
+
+function makeMovieKey(movie) {
+    const title = String(movie.title || '').trim().toLowerCase();
+    const year = normalizeYearToken(movie.year);
+    return `${title}::${year || 'na'}`;
+}
+
+function mergeUniqueMovies(target, source) {
+    const byKey = new Map(target.map((movie) => [makeMovieKey(movie), movie]));
+    source.forEach((movie) => {
+        const key = makeMovieKey(movie);
+        if (!byKey.has(key)) byKey.set(key, movie);
+    });
+    return Array.from(byKey.values());
+}
+
 module.exports = async function handler(req, res) {
     res.setHeader('Content-Type', 'application/json');
 
@@ -140,7 +161,7 @@ module.exports = async function handler(req, res) {
 }`;
 
     let allErrors = [];
-    let bestPartialResults = [];
+    let aggregatedResults = [];
 
     for (const model of MODELS.slice(0, MAX_MODELS_TO_TRY)) {
         const payload = {
@@ -197,22 +218,25 @@ module.exports = async function handler(req, res) {
 
         try {
             const parsed = normalizeModelResponse(text);
-            if (parsed.length < MIN_RECOMMENDATIONS) {
-                if (parsed.length > bestPartialResults.length) {
-                    bestPartialResults = parsed;
-                }
-                allErrors.push(`[${model}] замало результатів: ${parsed.length}`);
+            if (parsed.length === 0) {
+                allErrors.push(`[${model}] порожній список`);
                 continue;
             }
 
-            return res.status(200).json({ text: JSON.stringify(parsed) });
+            aggregatedResults = mergeUniqueMovies(aggregatedResults, parsed);
+
+            if (aggregatedResults.length >= MIN_RECOMMENDATIONS) {
+                return res.status(200).json({ text: JSON.stringify(aggregatedResults.slice(0, MAX_RECOMMENDATIONS)) });
+            }
+
+            allErrors.push(`[${model}] замало результатів після об'єднання: ${aggregatedResults.length}`);
         } catch (e) {
             allErrors.push(`[${model}] не вдалося розібрати JSON: ${e.message}`);
         }
     }
 
-    if (bestPartialResults.length > 0) {
-        return res.status(200).json({ text: JSON.stringify(bestPartialResults) });
+    if (aggregatedResults.length > 0) {
+        return res.status(200).json({ text: JSON.stringify(aggregatedResults.slice(0, MAX_RECOMMENDATIONS)) });
     }
 
     return res.status(200).json({ error: `Всі безкоштовні нейромережі недоступні. Деталі: ${allErrors.join(' | ')}` });
