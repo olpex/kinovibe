@@ -344,6 +344,9 @@
         const OMDb_KEY = '541f2a60'; // Вшитий ключ
 
         const GENRES = ["Комедія", "Драма", "Фантастика", "Екшн / Бойовик", "Жахи", "Трилер", "Мелодрама", "Кримінал", "Детектив", "Анімація", "Фентезі"];
+        const MAX_AI_MOVIES_TO_PROCESS = 9;
+        const AI_RECOMMENDATION_CACHE = new Map();
+        const OMDB_CACHE = new Map();
         const GENRE_TO_OMDB = {
             "Комедія": ["comedy"],
             "Драма": ["drama"],
@@ -460,6 +463,30 @@
             return Array.from(uniqueMap.values());
         }
 
+        function limitAiMovies(aiMovies, limit = MAX_AI_MOVIES_TO_PROCESS) {
+            const unique = [];
+            const seen = new Set();
+            for (const movie of aiMovies || []) {
+                if (!movie?.title) continue;
+                const key = `${normalizeText(movie.title)}_${getFirstYear(movie.year) || 'na'}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                unique.push(movie);
+                if (unique.length >= limit) break;
+            }
+            return unique;
+        }
+
+        function buildAICacheKey(years, genres, wishes) {
+            const sortedYears = [...(years || [])].map(String).sort();
+            const sortedGenres = [...(genres || [])].map(String).sort();
+            return JSON.stringify({
+                years: sortedYears,
+                genres: sortedGenres,
+                wishes: normalizeText(wishes)
+            });
+        }
+
         function init() {
             populateYears();
             populateGenres();
@@ -571,15 +598,22 @@
             if (s.endsWith('```')) s = s.substring(0, s.length - 3);
             return s.trim();
         }
-        async function fetchWithRetry(url, options = {}) {
-            const delays = [1000, 2000, 4000, 8000, 16000];
+        async function fetchWithRetry(url, options = {}, retryConfig = {}) {
+            const delays = Array.isArray(retryConfig.delays) && retryConfig.delays.length > 0
+                ? retryConfig.delays
+                : [700, 1400, 2500];
+            const timeoutMs = typeof retryConfig.timeoutMs === 'number' ? retryConfig.timeoutMs : 22000;
+            const retryableStatuses = retryConfig.retryableStatuses || [429, 500, 502, 503, 504];
             let lastError;
             for (let i = 0; i <= delays.length; i++) {
+                let timeoutId;
                 try {
-                    const response = await fetch(url, options);
+                    const controller = new AbortController();
+                    timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+                    const response = await fetch(url, { ...options, signal: controller.signal });
                     if (!response.ok) {
                         let errMsg = `Помилка HTTP ${response.status}`;
-                        let isRetryable = response.status === 503 || response.status === 429;
+                        let isRetryable = retryableStatuses.includes(response.status);
                         try {
                             const errData = await response.json();
                             if (errData.error?.message) {
@@ -595,11 +629,18 @@
                     return response;
                 } catch (error) {
                     lastError = error;
+                    if (error.name === 'AbortError') {
+                        const timeoutError = new Error(`Таймаут запиту (${timeoutMs} ms)`);
+                        timeoutError.isRetryable = true;
+                        lastError = timeoutError;
+                    }
                     if (error.isRetryable !== false && i < delays.length) {
                         await new Promise(resolve => setTimeout(resolve, delays[i]));
                     } else {
-                        throw error;
+                        throw lastError;
                     }
+                } finally {
+                    if (timeoutId) clearTimeout(timeoutId);
                 }
             }
             throw lastError;
@@ -629,8 +670,9 @@
                 if (!aiData || aiData.length === 0) {
                     throw new Error('ШІ не зміг знайти жодного фільму під вказані критерії (спробуйте трохи розширити вибір років або жанрів).');
                 }
+                const limitedAiMovies = limitAiMovies(aiData);
                 showLoader('Перевіряємо точність за темами, жанром і роком...');
-                const omdbResult = await fetchDetailsFromOMDb(aiData, { selectedYears, selectedGenres, wishes });
+                const omdbResult = await fetchDetailsFromOMDb(limitedAiMovies, { selectedYears, selectedGenres, wishes });
                 const moviesWithDetails = deduplicateMovies(omdbResult.moviesWithDetails);
                 if (moviesWithDetails.length === 0) throw new Error('За цими темами, жанром і роком точних збігів не знайдено. Спробуйте трохи розширити запит.');
                 moviesWithDetails.sort((a, b) => {
@@ -652,6 +694,10 @@
         async function fetchFromAI(years, genres, wishes) {
             const yearText = years.length > 0 ? years.join(', ') : 'Не має значення';
             const genreText = genres.length > 0 ? genres.join(', ') : 'Не має значення';
+            const cacheKey = buildAICacheKey(years, genres, wishes);
+            if (AI_RECOMMENDATION_CACHE.has(cacheKey)) {
+                return AI_RECOMMENDATION_CACHE.get(cacheKey);
+            }
             try {
                 const response = await fetchWithRetry('/api/recommend', {
                     method: 'POST',
@@ -663,12 +709,16 @@
                         genre: genreText,
                         wishes
                     })
+                }, {
+                    delays: [800, 1500, 2600],
+                    timeoutMs: 26000
                 });
                 const data = await response.json();
                 if (data.error) throw new Error(data.error);
                 const cleanJsonStr = cleanJSONString(data.text);
                 const movies = JSON.parse(cleanJsonStr);
                 if (!Array.isArray(movies)) throw new Error("Відповідь моделі не була масивом.");
+                AI_RECOMMENDATION_CACHE.set(cacheKey, movies);
                 return movies;
             } catch (error) {
                 throw new Error(`${error.message}`);
@@ -685,21 +735,43 @@
                 if (!movie.title) return null;
                 try {
                     const aiYear = getFirstYear(movie.year);
-                    const yearParam = aiYear ? `&y=${encodeURIComponent(aiYear)}` : '';
-                    let url = `https://www.omdbapi.com/?apikey=${OMDb_KEY}&t=${encodeURIComponent(movie.title)}${yearParam}&type=movie`;
-                    let response = await fetchWithRetry(url);
-                    let data = await response.json();
-                    
-                    // Якщо з роком не знайдено, пробуємо без року (можливо рік в базі відрізняється на 1)
-                    if (data.Response !== "True" && aiYear) {
-                        url = `https://www.omdbapi.com/?apikey=${OMDb_KEY}&t=${encodeURIComponent(movie.title)}&type=movie`;
-                        response = await fetchWithRetry(url);
-                        data = await response.json();
+                    const cacheKey = `${normalizeText(movie.title)}_${aiYear || 'na'}`;
+                    let cachedOmdbData = OMDB_CACHE.get(cacheKey);
+
+                    if (!cachedOmdbData) {
+                        const yearParam = aiYear ? `&y=${encodeURIComponent(aiYear)}` : '';
+                        let url = `https://www.omdbapi.com/?apikey=${OMDb_KEY}&t=${encodeURIComponent(movie.title)}${yearParam}&type=movie`;
+                        let response = await fetchWithRetry(url, {}, {
+                            delays: [250, 600],
+                            timeoutMs: 9000
+                        });
+                        let data = await response.json();
+                        
+                        // Якщо з роком не знайдено, пробуємо без року (можливо рік в базі відрізняється на 1)
+                        if (data.Response !== "True" && aiYear) {
+                            url = `https://www.omdbapi.com/?apikey=${OMDb_KEY}&t=${encodeURIComponent(movie.title)}&type=movie`;
+                            response = await fetchWithRetry(url, {}, {
+                                delays: [250, 600],
+                                timeoutMs: 9000
+                            });
+                            data = await response.json();
+                        }
+
+                        if (data.Response !== "True") return null;
+
+                        cachedOmdbData = {
+                            title: data.Title,
+                            year: data.Year || movie.year || "N/A",
+                            poster: data.Poster !== "N/A" ? data.Poster : "https://via.placeholder.com/300x450/222222/4b5563?text=Постер+Відсутній",
+                            imdbRating: data.imdbRating !== "N/A" ? data.imdbRating : "-",
+                            imdbID: data.imdbID || "",
+                            omdbGenre: data.Genre !== "N/A" ? data.Genre : "",
+                            omdbPlot: data.Plot !== "N/A" ? data.Plot : ""
+                        };
+                        OMDB_CACHE.set(cacheKey, cachedOmdbData);
                     }
 
-                    if (data.Response !== "True") return null;
-
-                    const omdbPrimaryYear = getFirstYear(data.Year);
+                    const omdbPrimaryYear = getFirstYear(cachedOmdbData.year);
                     if (aiYear && omdbPrimaryYear) {
                         const aiYearNum = parseInt(aiYear, 10);
                         const omdbYearNum = parseInt(omdbPrimaryYear, 10);
@@ -709,15 +781,9 @@
                     }
 
                     const movieCandidate = {
-                        title: data.Title,
-                        year: data.Year || movie.year || "N/A",
-                        poster: data.Poster !== "N/A" ? data.Poster : "https://via.placeholder.com/300x450/222222/4b5563?text=Постер+Відсутній",
-                        imdbRating: data.imdbRating !== "N/A" ? data.imdbRating : "-",
-                        imdbID: data.imdbID || "",
-                        omdbGenre: data.Genre !== "N/A" ? data.Genre : "",
-                        omdbPlot: data.Plot !== "N/A" ? data.Plot : "",
+                        ...cachedOmdbData,
                         aiPlotUA: movie.plot || "",
-                        displayPlot: data.Plot !== "N/A" ? data.Plot : (movie.plot || "Опис відсутній.")
+                        displayPlot: cachedOmdbData.omdbPlot || movie.plot || "Опис відсутній."
                     };
 
                     if (!matchesYearFilter(movieCandidate.year, selectedYearSet)) return null;

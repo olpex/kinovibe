@@ -1,15 +1,17 @@
 const https = require('https');
 
 const MODELS = [
+    'google/gemma-3-27b-it:free',
     'meta-llama/llama-3.3-70b-instruct:free',
     'qwen/qwen3-next-80b-a3b-instruct:free',
-    'nvidia/nemotron-3-super-120b-a12b:free',
-    'google/gemma-3-27b-it:free',
-    'openai/gpt-oss-120b:free',
-    'cognitivecomputations/dolphin-mistral-24b-venice-edition:free'
+    'openai/gpt-oss-120b:free'
 ];
+const REQUEST_TIMEOUT_MS = 18000;
+const MAX_MODELS_TO_TRY = 3;
+const MAX_RETRIES_PER_MODEL = 2;
+const RETRY_DELAY_MS = 450;
 
-function httpsPost(url, token, data) {
+function httpsPost(url, token, data, timeoutMs = REQUEST_TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
         const urlObj = new URL(url);
         const body = JSON.stringify(data);
@@ -31,7 +33,7 @@ function httpsPost(url, token, data) {
             res.on('end', () => resolve({ status: res.statusCode, body: rawData }));
         });
         req.on('error', reject);
-        req.setTimeout(30000, () => { req.destroy(); reject(new Error('Timeout')); });
+        req.setTimeout(timeoutMs, () => { req.destroy(); reject(new Error('Timeout')); });
         req.write(body);
         req.end();
     });
@@ -97,7 +99,7 @@ module.exports = async function handler(req, res) {
 4) Тематична близькість до запиту обов'язкова: відкидай слабко релевантні варіанти.
 5) Вкажи оригінальну англійську назву точно як на IMDb.
 
-Поверни ТІЛЬКИ JSON-масив без markdown. Кількість: від 6 до 14 фільмів (або менше, якщо строгі критерії сильно обмежують вибір).
+Поверни ТІЛЬКИ JSON-масив без markdown. Кількість: від 5 до 9 фільмів (або менше, якщо строгі критерії сильно обмежують вибір).
 Кожен елемент:
 {
   "title": "Original English Title",
@@ -107,20 +109,21 @@ module.exports = async function handler(req, res) {
 
     let allErrors = [];
 
-    for (const model of MODELS) {
+    for (const model of MODELS.slice(0, MAX_MODELS_TO_TRY)) {
         const payload = {
             model: model,
             messages: [{ role: "user", content: prompt }],
-            temperature: 0.25
+            temperature: 0.25,
+            max_tokens: 900
         };
 
         let result;
         let data;
         let success = false;
         
-        for (let retry = 0; retry < 3; retry++) {
+        for (let retry = 0; retry < MAX_RETRIES_PER_MODEL; retry++) {
             try {
-                result = await httpsPost('https://openrouter.ai/api/v1/chat/completions', apiKey, payload);
+                result = await httpsPost('https://openrouter.ai/api/v1/chat/completions', apiKey, payload, REQUEST_TIMEOUT_MS);
                 try { data = JSON.parse(result.body); } catch { data = {}; }
 
                 if (result.status === 401) {
@@ -134,8 +137,7 @@ module.exports = async function handler(req, res) {
                 
                 const msg = data?.error?.message || `HTTP ${result.status}`;
                 if (msg.includes('Provider returned error') || msg.includes('overloaded') || result.status === 429 || result.status >= 500) {
-                    // Пауза 1 секунда перед ретраєм
-                    await sleep(1000);
+                    await sleep(RETRY_DELAY_MS);
                 } else {
                     allErrors.push(`[${model}] ${msg}`);
                     break;
