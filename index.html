@@ -603,8 +603,9 @@
                 if (movie.imdbID) node.querySelector('.card-imdb-btn').href = `https://www.imdb.com/title/${movie.imdbID}/`;
                 else node.querySelector('.card-imdb-btn').href = `https://www.imdb.com/find?q=${encodeURIComponent(movie.title)}`;
 
-                const searchQ = `${movie.title} (${movie.year !== 'N/A' ? movie.year : ''}) дивитися онлайн українською`;
-                node.querySelector('.card-watch-btn').href = `https://www.google.com/search?q=${encodeURIComponent(searchQ.replace(' ()', ''))}`;
+                // DuckDuckGo "Мені пощастить" (символ "\" на початку запиту робить миттєвий перехід на перший сайт)
+                const queryTerm = `${movie.title} ${movie.year !== 'N/A' ? movie.year : ''} дивитися онлайн українською hd`.trim();
+                node.querySelector('.card-watch-btn').href = `https://duckduckgo.com/?q=${encodeURIComponent('\\' + queryTerm)}`;
                 
                 fragment.appendChild(node);
             });
