@@ -488,9 +488,9 @@
         async function fetchFromGemini(year, genre, wishes) {
             const apiKey = "AIzaSyBJBpRSwrrfddEeT2UsLaJMuItavev6RCE";
             const MODELS = [
+                'gemini-2.5-flash',
                 'gemini-2.0-flash',
-                'gemini-1.5-flash',
-                'gemini-1.5-flash-8b'
+                'gemini-2.0-flash-lite'
             ];
             const prompt = `Підбери 16 фільмів, які ідеально відповідають цим критеріям користувача.\nРік виходу: ${year}.\nЖанр: ${genre}.\nОсобисті побажання користувача: "${wishes}".\n\nПоверни СУТО JSON масив об'єктів. БЕЗ форматування markdown, БЕЗ пояснень. Тільки валідний JSON.\nКожен об'єкт має містити два ключі:\n'title' (точна офіційна англійська назва фільму, як в базі IMDb).\n'plot' (цікавий і детальний опис фільму УКРАЇНСЬКОЮ мовою).\n\nПриклад відповіді:\n[\n  {"title": "The Matrix", "plot": "Культовий фільм про хакера Нео..."},\n  {"title": "Inception", "plot": "Злодій, який краде корпоративні секрети..."}\n]`;
             const payload = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7 } };
@@ -508,11 +508,14 @@
                 } catch (error) {
                     if (error.message && error.message.includes('401')) throw new Error(`Недійсний Gemini API Key (Помилка 401).`);
                     lastError = error;
-                    // якщо перевантажений — спробуємо наступну модель
-                    if (!error.isRetryable) throw new Error(`Помилка під час запиту до Gemini: ${error.message}`);
+                    const msg = error.message || '';
+                    // переходимо до наступної моделі при перевантаженні або недоступності
+                    const isFallbackable = error.isRetryable || msg.includes('not found') || msg.includes('not supported');
+                    if (!isFallbackable) throw new Error(`Помилка під час запиту до Gemini: ${msg}`);
+                    // інакше — спробуємо наступну модель зі списку
                 }
             }
-            throw new Error(`Сервери Google Gemini перевантажені. Спробуйте пізніше.`);
+            throw new Error(`Сервери Google Gemini тимчасово недоступні. Спробуйте пізніше.`);
         }
 
         async function fetchDetailsFromOMDb(geminiMovies) {
