@@ -551,9 +551,10 @@
         async function fetchDetailsFromOMDb(aiMovies) {
             const promises = aiMovies.map(async (movie) => {
                 if (!movie.title) return null;
-                const fallbackMovie = { title: movie.title, originalTitleFromGemini: movie.title, year: "N/A", poster: "https://via.placeholder.com/300x450/1f2937/4b5563?text=Постер+Відсутній", imdbRating: "-", imdbID: "", plotUA: movie.plot };
+                const fallbackMovie = { title: movie.title, originalTitleFromGemini: movie.title, year: movie.year || "N/A", poster: "https://via.placeholder.com/300x450/1f2937/4b5563?text=Постер+Відсутній", imdbRating: "-", imdbID: "", plotUA: movie.plot };
                 try {
-                    const url = `https://www.omdbapi.com/?apikey=${OMDb_KEY}&t=${encodeURIComponent(movie.title)}&type=movie`;
+                    const yearParam = movie.year ? `&y=${encodeURIComponent(movie.year)}` : '';
+                    const url = `https://www.omdbapi.com/?apikey=${OMDb_KEY}&t=${encodeURIComponent(movie.title)}${yearParam}&type=movie`;
                     const response = await fetchWithRetry(url);
                     const data = await response.json();
                     if (data.Response === "True") {
