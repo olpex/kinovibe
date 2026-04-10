@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>КіноВайб</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Спеціальні стилі для спінера та скролбару */
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-left-color: #3b82f6; /* Tailwind blue-500 */
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Темний скролбар для textarea та карток */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1f2937; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4b5563; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6b7280; 
+        }
+        
+        /* Запобігання скролу body коли відкрито модальне вікно */
+        body.modal-open {
+            overflow: hidden;
+        }
+
+        /* Анімації для Hero Section */
+        @keyframes blob {
+            0% { transform: translate(0px, 0px) scale(1); }
+            33% { transform: translate(30px, -50px) scale(1.1); }
+            66% { transform: translate(-20px, 20px) scale(0.9); }
+            100% { transform: translate(0px, 0px) scale(1); }
+        }
+        .animate-blob { animation: blob 7s infinite; }
+        .animation-delay-2000 { animation-delay: 2s; }
+        .animation-delay-4000 { animation-delay: 4s; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 font-sans min-h-screen flex flex-col">
+
+    <!-- Шапка -->
+    <header class="bg-gray-800 border-b border-gray-700 sticky top-0 z-10 shadow-md">
+        <div class="container mx-auto px-4 py-4 flex justify-between items-center max-w-7xl">
+            <h1 class="text-2xl md:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 tracking-tight">
+                🎬 КіноВайб
+            </h1>
+            <div class="flex items-center gap-3">
+                <span id="keyIndicator" class="text-lg cursor-help" title="Статус ключів API">🔴</span>
+                <button id="openSettingsBtn" class="text-2xl hover:rotate-90 transition-transform duration-300 focus:outline-none" title="Налаштування">
+                    ⚙️
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Головний контент -->
+    <main class="flex-grow container mx-auto px-4 py-8 max-w-7xl">
+        
+        <!-- Hero Section -->
+        <div class="relative w-full rounded-3xl overflow-hidden bg-gray-800/40 border border-gray-700 shadow-2xl mb-12 isolate">
+            <!-- Абстрактні градієнтні плями (анімовані) -->
+            <div class="absolute inset-0 -z-10 overflow-hidden pointer-events-none">
+                <div class="absolute top-0 -left-10 w-72 h-72 bg-purple-600 rounded-full mix-blend-screen filter blur-[80px] opacity-30 animate-blob"></div>
+                <div class="absolute top-0 -right-10 w-72 h-72 bg-blue-600 rounded-full mix-blend-screen filter blur-[80px] opacity-30 animate-blob animation-delay-2000"></div>
+                <div class="absolute -bottom-8 left-1/2 -translate-x-1/2 w-72 h-72 bg-indigo-600 rounded-full mix-blend-screen filter blur-[80px] opacity-30 animate-blob animation-delay-4000"></div>
+            </div>
+
+            <div class="px-6 py-16 md:py-24 text-center">
+                <h2 class="text-4xl md:text-5xl lg:text-7xl font-extrabold text-white mb-6 tracking-tight">
+                    Ваш ідеальний <br class="hidden sm:block"> 
+                    <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-500">кіновечір починається тут</span>
+                </h2>
+                <p class="mt-4 text-lg md:text-xl text-gray-300 max-w-2xl mx-auto mb-10 leading-relaxed">
+                    Розкажіть ШІ про свій настрій, бажаний сюжет чи атмосферу, і ми миттєво підберемо фільми, які влучать у саме серденько. 🍿✨
+                </p>
+                <div class="flex justify-center">
+                    <a href="#searchSection" class="group relative inline-flex items-center justify-center px-8 py-4 font-bold text-white transition-all duration-300 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full hover:from-blue-500 hover:to-purple-500 hover:scale-105 shadow-[0_0_25px_rgba(99,102,241,0.4)] focus:outline-none">
+                        Почати магію пошуку
+                        <svg class="w-5 h-5 ml-2 transition-transform duration-300 group-hover:translate-y-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Форма пошуку -->
+        <section id="searchSection" class="bg-gray-800 p-6 md:p-8 rounded-2xl shadow-xl mb-10 border border-gray-700 scroll-mt-24">
+            <form id="searchForm" class="flex flex-col gap-6">
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Вибір року (Випадаюче меню з чекбоксами) -->
+                    <div class="flex flex-col gap-2 relative" id="yearDropdownContainer">
+                        <label class="font-medium text-gray-400">Рік виходу</label>
+                        <button type="button" id="yearDropdownBtn" class="w-full text-left bg-gray-700 text-white rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 border border-gray-600 transition-shadow flex justify-between items-center relative z-10">
+                            <span id="yearSelectedText" class="truncate">Будь-який рік</span>
+                            <span class="pointer-events-none text-gray-400 text-xs">▼</span>
+                        </button>
+                        <!-- Меню -->
+                        <div id="yearDropdownMenu" class="hidden absolute top-[100%] left-0 w-full mt-2 bg-gray-800 border border-gray-600 rounded-xl shadow-2xl z-30 max-h-60 overflow-y-auto">
+                            <div class="p-2 flex flex-col gap-1" id="yearCheckboxList">
+                                <label class="flex items-center gap-3 p-2 hover:bg-gray-700 rounded cursor-pointer text-white transition-colors">
+                                    <input type="checkbox" value="any" class="w-4 h-4 accent-blue-500 cursor-pointer" checked>
+                                    <span class="select-none">Будь-який рік</span>
+                                </label>
+                                <!-- Роки генеруються через JS -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Вибір жанру (Випадаюче меню з чекбоксами) -->
+                    <div class="flex flex-col gap-2 relative" id="genreDropdownContainer">
+                        <label class="font-medium text-gray-400">Жанр</label>
+                        <button type="button" id="genreDropdownBtn" class="w-full text-left bg-gray-700 text-white rounded-xl p-3 outline-none focus:ring-2 focus:ring-blue-500 border border-gray-600 transition-shadow flex justify-between items-center relative z-10">
+                            <span id="genreSelectedText" class="truncate">Будь-який жанр</span>
+                            <span class="pointer-events-none text-gray-400 text-xs">▼</span>
+                        </button>
+                        <!-- Меню -->
+                        <div id="genreDropdownMenu" class="hidden absolute top-[100%] left-0 w-full mt-2 bg-gray-800 border border-gray-600 rounded-xl shadow-2xl z-30 max-h-60 overflow-y-auto">
+                            <div class="p-2 flex flex-col gap-1" id="genreCheckboxList">
+                                <label class="flex items-center gap-3 p-2 hover:bg-gray-700 rounded cursor-pointer text-white transition-colors">
+                                    <input type="checkbox" value="any" class="w-4 h-4 accent-blue-500 cursor-pointer" checked>
+                                    <span class="select-none">Будь-який жанр</span>
+                                </label>
+                                <label class="flex items-center gap-3 p-2 hover:bg-gray-700 rounded cursor-pointer text-white transition-colors"><input type="checkbox" value="Комедія" class="w-4 h-4 accent-blue-500 cursor-pointer"><span class="select-none">Комедія</span></label>
+                                <label class="flex items-center gap-3 p-2 hover:bg-gray-700 rounded cursor-pointer text-white transition-colors"><input type="checkbox" value="Драма" class="w-4 h-4 accent-blue-500 cursor-pointer"><span class="select-none">Драма</span></label>
+                                <label class="flex items-center gap-3 p-2 hover:bg-gray-700 rounded cursor-pointer text-white transition-colors"><input type="checkbox" value="Фантастика" class="w-4 h-4 accent-blue-500 cursor-pointer"><span class="select-none">Фантастика</span></label>
+                                <label class="flex items-center gap-3 p-2 hover:bg-gray-700 rounded cursor-pointer text-white transition-colors"><input type="checkbox" value="Екшн / Бойовик" class="w-4 h-4 accent-blue-500 cursor-pointer"><span class="select-none">Екшн / Бойовик</span></label>
+                                <label class="flex items-center gap-3 p-2 hover:bg-gray-700 rounded cursor-pointer text-white transition-colors"><input type="checkbox" value="Жахи" class="w-4 h-4 accent-blue-500 cursor-pointer"><span class="select-none">Жахи</span></label>
+                                <label class="flex items-center gap-3 p-2 hover:bg-gray-700 rounded cursor-pointer text-white transition-colors"><input type="checkbox" value="Трилер" class="w-4 h-4 accent-blue-500 cursor-pointer"><span class="select-none">Трилер</span></label>
+                                <label class="flex items-center gap-3 p-2 hover:bg-gray-700 rounded cursor-pointer text-white transition-colors"><input type="checkbox" value="Мелодрама" class="w-4 h-4 accent-blue-500 cursor-pointer"><span class="select-none">Мелодрама</span></label>
+                                <label class="flex items-center gap-3 p-2 hover:bg-gray-700 rounded cursor-pointer text-white transition-colors"><input type="checkbox" value="Кримінал" class="w-4 h-4 accent-blue-500 cursor-pointer"><span class="select-none">Кримінал</span></label>
+                                <label class="flex items-center gap-3 p-2 hover:bg-gray-700 rounded cursor-pointer text-white transition-colors"><input type="checkbox" value="Детектив" class="w-4 h-4 accent-blue-500 cursor-pointer"><span class="select-none">Детектив</span></label>
+                                <label class="flex items-center gap-3 p-2 hover:bg-gray-700 rounded cursor-pointer text-white transition-colors"><input type="checkbox" value="Анімація" class="w-4 h-4 accent-blue-500 cursor-pointer"><span class="select-none">Анімація</span></label>
+                                <label class="flex items-center gap-3 p-2 hover:bg-gray-700 rounded cursor-pointer text-white transition-colors"><input type="checkbox" value="Фентезі" class="w-4 h-4 accent-blue-500 cursor-pointer"><span class="select-none">Фентезі</span></label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Побажання -->
+                <div class="flex flex-col gap-2">
+                    <label for="wishesInput" class="font-medium text-gray-400">
+                        Ваші побажання <span class="text-red-400">*</span>
+                    </label>
+                    <textarea id="wishesInput" rows="3" placeholder="Наприклад: атмосферне кіно про хакерів, де все відбувається вночі..." class="bg-gray-700 text-white rounded-xl p-4 outline-none focus:ring-2 focus:ring-blue-500 border border-gray-600 transition-shadow resize-y"></textarea>
+                </div>
+
+                <!-- Кнопка -->
+                <button type="submit" class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-4 px-8 rounded-xl shadow-lg transform transition-all active:scale-95 text-lg w-full md:w-auto md:self-center">
+                    ✨ Підібрати фільми
+                </button>
+            </form>
+        </section>
+
+        <!-- Індикатор завантаження -->
+        <div id="loader" class="hidden flex-col items-center justify-center py-12 gap-4">
+            <div class="spinner"></div>
+            <p id="loaderText" class="text-gray-400 animate-pulse text-center">Аналізуємо побажання та звертаємось до бази...</p>
+        </div>
+
+        <!-- Повідомлення про помилки -->
+        <div id="errorMessage" class="hidden bg-red-900/50 border border-red-500 text-red-200 p-4 rounded-xl mb-8 text-center"></div>
+
+        <!-- Сітка результатів -->
+        <section id="resultsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <!-- Картки генеруються сюди -->
+        </section>
+
+    </main>
+
+    <!-- Модальне вікно налаштувань -->
+    <div id="settingsModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-gray-800 w-full max-w-md rounded-2xl shadow-2xl border border-gray-700 p-6 sm:p-8 transform scale-95 transition-transform duration-300 flex flex-col">
+            
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-white">⚙️ Налаштування API</h2>
+                <button id="closeSettingsBtn" class="text-gray-400 hover:text-white focus:outline-none text-2xl">&times;</button>
+            </div>
+
+            <div class="flex flex-col gap-5">
+                <!-- OMDb Key -->
+                <div class="flex flex-col gap-2">
+                    <div class="flex justify-between items-end">
+                        <label for="omdbKeyInput" class="font-medium text-gray-300 text-sm">OMDb API Key <span class="text-red-400">*</span></label>
+                        <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" class="text-xs text-blue-400 hover:text-blue-300 underline">Отримати ключ</a>
+                    </div>
+                    <input type="text" id="omdbKeyInput" placeholder="Введіть ключ OMDb" class="bg-gray-900 text-white rounded-lg p-3 outline-none focus:ring-2 focus:ring-blue-500 border border-gray-600">
+                </div>
+            </div>
+
+            <button id="saveSettingsBtn" class="mt-8 bg-gray-100 hover:bg-white text-gray-900 font-bold py-3 px-4 rounded-xl shadow transition-colors w-full">
+                Зберегти
+            </button>
+        </div>
+    </div>
+
+    <!-- Шаблон картки фільму (схований) -->
+    <template id="movieCardTemplate">
+        <article class="bg-gray-800 rounded-2xl overflow-hidden shadow-lg transform transition duration-300 hover:-translate-y-2 hover:shadow-2xl border border-gray-700 flex flex-col h-full group">
+            <!-- Постер -->
+            <div class="relative aspect-[2/3] w-full overflow-hidden bg-gray-900">
+                <img src="" alt="Poster" class="card-poster w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent opacity-90"></div>
+                
+                <!-- Бейдж рейтингу -->
+                <div class="absolute bottom-3 left-3 bg-black/60 backdrop-blur-md px-2 py-1 rounded-lg flex items-center gap-1 border border-gray-600">
+                    <span class="text-yellow-400 text-sm">⭐</span>
+                    <span class="card-rating font-bold text-white text-sm"></span>
+                </div>
+                <!-- Бейдж року -->
+                <div class="absolute bottom-3 right-3 bg-black/60 backdrop-blur-md px-2 py-1 rounded-lg border border-gray-600">
+                    <span class="card-year font-bold text-gray-200 text-sm"></span>
+                </div>
+            </div>
+
+            <!-- Інфо -->
+            <div class="p-5 flex flex-col flex-grow">
+                <h3 class="card-title text-xl font-bold text-white mb-3 line-clamp-2 leading-tight"></h3>
+                <p class="card-plot text-gray-400 text-sm flex-grow line-clamp-5 mb-5"></p>
+                
+                <!-- Кнопки дій -->
+                <div class="mt-auto flex flex-col gap-2">
+                    <a href="#" target="_blank" class="card-imdb-btn bg-yellow-500 hover:bg-yellow-400 text-black font-semibold py-2 px-4 rounded-lg text-center transition-colors text-sm flex justify-center items-center gap-2">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M22.09 10.3c.09-.81-.15-1.42-.71-1.84-.57-.42-1.3-.64-2.21-.64h-3.41v8.36h1.76V14h1.16l1.39 2.18h2.09l-1.63-2.48c.62-.21 1.07-.54 1.34-.98.28-.45.42-.99.42-1.62-.01-.36-.07-.63-.2-1.02zM19.4 12.6h-1.8v-1.6h1.8c.45 0 .76.12.94.35.17.23.26.54.26.93 0 .37-.09.67-.27.88-.17.21-.48.33-.93.34zm-8.89 3.58h1.76V7.82h-1.76v8.36zm-4.32 0h1.76v-5.6l2.1 5.6h1.6V7.82h-1.76v5.61l-2.11-5.61H4.43v8.36zM1.86 7.82H.1v8.36h1.76V7.82z"/></svg>
+                        Детальніше на IMDb
+                    </a>
+                    <a href="#" target="_blank" class="card-tmdb-btn bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg text-center transition-colors text-sm">
+                        🇺🇦 Шукати опис українською
+                    </a>
+                </div>
+            </div>
+        </article>
+    </template>
+
+    <script>
+        const ELEMENTS = {
+            indicator: document.getElementById('keyIndicator'),
+            settingsBtn: document.getElementById('openSettingsBtn'),
+            settingsModal: document.getElementById('settingsModal'),
+            closeModalBtn: document.getElementById('closeSettingsBtn'),
+            saveKeysBtn: document.getElementById('saveSettingsBtn'),
+            omdbInput: document.getElementById('omdbKeyInput'),
+            yearDropdownBtn: document.getElementById('yearDropdownBtn'),
+            yearDropdownMenu: document.getElementById('yearDropdownMenu'),
+            yearCheckboxList: document.getElementById('yearCheckboxList'),
+            yearSelectedText: document.getElementById('yearSelectedText'),
+            genreDropdownBtn: document.getElementById('genreDropdownBtn'),
+            genreDropdownMenu: document.getElementById('genreDropdownMenu'),
+            genreCheckboxList: document.getElementById('genreCheckboxList'),
+            genreSelectedText: document.getElementById('genreSelectedText'),
+            searchForm: document.getElementById('searchForm'),
+            wishesInput: document.getElementById('wishesInput'),
+            loader: document.getElementById('loader'),
+            loaderText: document.getElementById('loaderText'),
+            errorMessage: document.getElementById('errorMessage'),
+            resultsGrid: document.getElementById('resultsGrid'),
+            template: document.getElementById('movieCardTemplate')
+        };
+
+        let keys = {
+            omdb: localStorage.getItem('omdb_key') || ''
+        };
+
+        function init() {
+            populateYears();
+            setupDropdowns();
+            updateIndicator();
+            ELEMENTS.omdbInput.value = keys.omdb;
+        }
+
+        function populateYears() {
+            const currentYear = 2026;
+            for (let y = currentYear; y >= 1960; y--) {
+                const label = document.createElement('label');
+                label.className = "flex items-center gap-3 p-2 hover:bg-gray-700 rounded cursor-pointer text-white transition-colors";
+                label.innerHTML = `<input type="checkbox" value="${y}" class="w-4 h-4 accent-blue-500 cursor-pointer"><span class="select-none">${y}</span>`;
+                ELEMENTS.yearCheckboxList.appendChild(label);
+            }
+        }
+
+        function setupDropdowns() {
+            ELEMENTS.yearDropdownBtn.addEventListener('click', () => {
+                ELEMENTS.yearDropdownMenu.classList.toggle('hidden');
+                ELEMENTS.genreDropdownMenu.classList.add('hidden');
+            });
+            ELEMENTS.genreDropdownBtn.addEventListener('click', () => {
+                ELEMENTS.genreDropdownMenu.classList.toggle('hidden');
+                ELEMENTS.yearDropdownMenu.classList.add('hidden');
+            });
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('#yearDropdownContainer')) ELEMENTS.yearDropdownMenu.classList.add('hidden');
+                if (!e.target.closest('#genreDropdownContainer')) ELEMENTS.genreDropdownMenu.classList.add('hidden');
+            });
+            setupCheckboxLogic(ELEMENTS.yearCheckboxList, ELEMENTS.yearSelectedText, 'Будь-який рік');
+            setupCheckboxLogic(ELEMENTS.genreCheckboxList, ELEMENTS.genreSelectedText, 'Будь-який жанр');
+        }
+
+        function setupCheckboxLogic(listContainer, textElement, defaultText) {
+            listContainer.addEventListener('change', (e) => {
+                if (e.target.tagName !== 'INPUT') return;
+                const checkboxes = Array.from(listContainer.querySelectorAll('input[type="checkbox"]'));
+                const anyCb = checkboxes.find(cb => cb.value === 'any');
+                const otherCbs = checkboxes.filter(cb => cb.value !== 'any');
+                if (e.target === anyCb && anyCb.checked) {
+                    otherCbs.forEach(cb => cb.checked = false);
+                } else if (e.target !== anyCb && e.target.checked) {
+                    anyCb.checked = false;
+                }
+                const checkedList = checkboxes.filter(cb => cb.checked);
+                if (checkedList.length === 0) anyCb.checked = true;
+                const selectedValues = checkboxes.filter(cb => cb.checked && cb.value !== 'any').map(cb => cb.value);
+                if (selectedValues.length === 0) textElement.textContent = defaultText;
+                else if (selectedValues.length <= 2) textElement.textContent = selectedValues.join(', ');
+                else textElement.textContent = `Обрано: ${selectedValues.length}`;
+            });
+        }
+
+        function updateIndicator() {
+            if (keys.omdb) {
+                ELEMENTS.indicator.textContent = '🟢';
+                ELEMENTS.indicator.title = 'OMDb підключено';
+            } else {
+                ELEMENTS.indicator.textContent = '🔴';
+                ELEMENTS.indicator.title = 'Ключі відсутні';
+            }
+        }
+
+        function openModal() {
+            ELEMENTS.settingsModal.classList.remove('hidden');
+            document.body.classList.add('modal-open');
+            setTimeout(() => {
+                ELEMENTS.settingsModal.classList.remove('opacity-0');
+                ELEMENTS.settingsModal.firstElementChild.classList.remove('scale-95');
+                ELEMENTS.settingsModal.firstElementChild.classList.add('scale-100');
+            }, 10);
+        }
+
+        function closeModal() {
+            ELEMENTS.settingsModal.classList.add('opacity-0');
+            ELEMENTS.settingsModal.firstElementChild.classList.remove('scale-100');
+            ELEMENTS.settingsModal.firstElementChild.classList.add('scale-95');
+            setTimeout(() => {
+                ELEMENTS.settingsModal.classList.add('hidden');
+                document.body.classList.remove('modal-open');
+            }, 300);
+        }
+
+        ELEMENTS.settingsBtn.addEventListener('click', openModal);
+        ELEMENTS.closeModalBtn.addEventListener('click', closeModal);
+        ELEMENTS.settingsModal.addEventListener('click', (e) => { if (e.target === ELEMENTS.settingsModal) closeModal(); });
+
+        ELEMENTS.saveKeysBtn.addEventListener('click', () => {
+            const omdbVal = ELEMENTS.omdbInput.value.trim();
+            if (!omdbVal) { alert('Будь ласка, введіть OMDb API Key.'); return; }
+            keys.omdb = omdbVal;
+            localStorage.setItem('omdb_key', keys.omdb);
+            updateIndicator();
+            closeModal();
+        });
+
+        function showError(msg) {
+            ELEMENTS.errorMessage.innerHTML = msg;
+            ELEMENTS.errorMessage.classList.remove('hidden');
+            ELEMENTS.loader.classList.add('hidden');
+            ELEMENTS.loader.classList.remove('flex');
+        }
+        function hideError() {
+            ELEMENTS.errorMessage.classList.add('hidden');
+            ELEMENTS.errorMessage.innerHTML = '';
+        }
+        function showLoader(text) {
+            ELEMENTS.loaderText.textContent = text;
+            ELEMENTS.loader.classList.remove('hidden');
+            ELEMENTS.loader.classList.add('flex');
+            ELEMENTS.resultsGrid.innerHTML = '';
+        }
+        function hideLoader() {
+            ELEMENTS.loader.classList.add('hidden');
+            ELEMENTS.loader.classList.remove('flex');
+        }
+        function cleanJSONString(str) {
+            let s = str.trim();
+            if (s.startsWith('```json')) s = s.substring(7);
+            else if (s.startsWith('```')) s = s.substring(3);
+            if (s.endsWith('```')) s = s.substring(0, s.length - 3);
+            return s.trim();
+        }
+        async function fetchWithRetry(url, options = {}) {
+            const delays = [1000, 2000, 4000, 8000, 16000];
+            let lastError;
+            for (let i = 0; i <= delays.length; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        let errMsg = `Помилка HTTP ${response.status}`;
+                        let isRetryable = response.status === 503 || response.status === 429;
+                        try {
+                            const errData = await response.json();
+                            if (errData.error?.message) {
+                                errMsg = errData.error.message;
+                                const msgLower = errMsg.toLowerCase();
+                                if (msgLower.includes('high demand') || msgLower.includes('overloaded')) isRetryable = true;
+                            }
+                        } catch (e) {}
+                        const error = new Error(errMsg);
+                        error.isRetryable = isRetryable;
+                        throw error;
+                    }
+                    return response;
+                } catch (error) {
+                    lastError = error;
+                    if (error.isRetryable !== false && i < delays.length) {
+                        await new Promise(resolve => setTimeout(resolve, delays[i]));
+                    } else {
+                        throw error;
+                    }
+                }
+            }
+            throw lastError;
+        }
+
+        ELEMENTS.searchForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideError();
+            if (!keys.omdb) {
+                showError('Помилка: OMDb API ключ не налаштований. Натисніть на ⚙️ зверху, щоб додати його.');
+                openModal();
+                return;
+            }
+            const wishes = ELEMENTS.wishesInput.value.trim();
+            if (!wishes) {
+                showError('Будь ласка, опишіть свої побажання у великому полі.');
+                ELEMENTS.wishesInput.focus();
+                return;
+            }
+            const selectedYearEls = Array.from(ELEMENTS.yearCheckboxList.querySelectorAll('input:checked')).map(el => el.value).filter(val => val !== 'any');
+            const selectedGenreEls = Array.from(ELEMENTS.genreCheckboxList.querySelectorAll('input:checked')).map(el => el.value).filter(val => val !== 'any');
+            const selectedYears = selectedYearEls.length > 0 ? selectedYearEls.join(', ') : 'Не має значення';
+            const selectedGenres = selectedGenreEls.length > 0 ? selectedGenreEls.join(', ') : 'Не має значення';
+            ELEMENTS.yearDropdownMenu.classList.add('hidden');
+            ELEMENTS.genreDropdownMenu.classList.add('hidden');
+            await processRecommendation(selectedYears, selectedGenres, wishes);
+        });
+
+        async function processRecommendation(year, genre, wishes) {
+            showLoader('ШІ аналізує запит та підбирає фільми...');
+            try {
+                const geminiData = await fetchFromGemini(year, genre, wishes);
+                showLoader('Збираємо рейтинги та постери з бази OMDb...');
+                const omdbResult = await fetchDetailsFromOMDb(geminiData);
+                const moviesWithDetails = omdbResult.moviesWithDetails;
+                if (moviesWithDetails.length === 0) throw new Error('Не вдалося знайти детальну інформацію про запропоновані фільми в базі.');
+                moviesWithDetails.sort((a, b) => {
+                    let ratingA = isNaN(parseFloat(a.imdbRating)) ? 0 : parseFloat(a.imdbRating);
+                    let ratingB = isNaN(parseFloat(b.imdbRating)) ? 0 : parseFloat(b.imdbRating);
+                    return ratingB - ratingA;
+                });
+                renderMovies(moviesWithDetails);
+                hideLoader();
+                if (omdbResult.hasAuthError) {
+                    const warningHTML = `<div class="bg-yellow-900/50 border border-yellow-500 text-yellow-200 p-4 rounded-xl mb-6 text-center">⚠️ <b>Увага:</b> Недійсний OMDb API Key. Оновіть ключ у налаштуваннях (⚙️).</div>`;
+                    ELEMENTS.errorMessage.innerHTML = warningHTML;
+                    ELEMENTS.errorMessage.classList.remove('hidden', 'bg-red-900/50', 'border-red-500', 'text-red-200');
+                }
+            } catch (error) {
+                console.error("Процес перервано:", error);
+                ELEMENTS.errorMessage.className = "bg-red-900/50 border border-red-500 text-red-200 p-4 rounded-xl mb-8 text-center";
+                showError(`<b>Сталася помилка:</b> ${error.message}`);
+            }
+        }
+
+        async function fetchFromGemini(year, genre, wishes) {
+            const apiKey = "";
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const prompt = `Підбери 16 фільмів, які ідеально відповідають цим критеріям користувача.\nРік виходу: ${year}.\nЖанр: ${genre}.\nОсобисті побажання користувача: "${wishes}".\n\nПоверни СУТО JSON масив об'єктів. БЕЗ форматування markdown, БЕЗ пояснень. Тільки валідний JSON.\nКожен об'єкт має містити два ключі:\n'title' (точна офіційна англійська назва фільму, як в базі IMDb).\n'plot' (цікавий і детальний опис фільму УКРАЇНСЬКОЮ мовою).\n\nПриклад відповіді:\n[\n  {"title": "The Matrix", "plot": "Культовий фільм про хакера Нео..."},\n  {"title": "Inception", "plot": "Злодій, який краде корпоративні секрети..."}\n]`;
+            const payload = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7 } };
+            try {
+                const response = await fetchWithRetry(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                const data = await response.json();
+                const textResponse = data.candidates[0].content.parts[0].text;
+                const cleanJsonStr = cleanJSONString(textResponse);
+                const movies = JSON.parse(cleanJsonStr);
+                if (!Array.isArray(movies)) throw new Error("ШІ повернув не масив.");
+                return movies;
+            } catch (error) {
+                if (error.message && error.message.includes('401')) throw new Error(`Недійсний Gemini API Key (Помилка 401).`);
+                if (error.isRetryable) throw new Error(`Сервери Google Gemini перевантажені. Спробуйте пізніше.`);
+                throw new Error(`Помилка під час запиту до Gemini: ${error.message}`);
+            }
+        }
+
+        async function fetchDetailsFromOMDb(geminiMovies) {
+            let authError = false;
+            const promises = geminiMovies.map(async (movie) => {
+                if (!movie.title) return null;
+                const fallbackMovie = { title: movie.title, originalTitleFromGemini: movie.title, year: "N/A", poster: "https://via.placeholder.com/300x450/1f2937/4b5563?text=Постер+відсутній", imdbRating: "N/A", imdbID: "", plotUA: movie.plot };
+                if (authError) return fallbackMovie;
+                try {
+                    const url = `https://www.omdbapi.com/?apikey=${keys.omdb}&t=${encodeURIComponent(movie.title)}&type=movie`;
+                    const response = await fetchWithRetry(url);
+                    const data = await response.json();
+                    if (data.Response === "True") {
+                        return { title: data.Title, originalTitleFromGemini: movie.title, year: data.Year, poster: data.Poster !== "N/A" ? data.Poster : fallbackMovie.poster, imdbRating: data.imdbRating !== "N/A" ? data.imdbRating : "N/A", imdbID: data.imdbID, plotUA: movie.plot };
+                    } else if (data.Error === "Invalid API key!") {
+                        authError = true;
+                        return fallbackMovie;
+                    } else {
+                        return null;
+                    }
+                } catch (e) {
+                    if (e.message && e.message.includes('401')) { authError = true; return fallbackMovie; }
+                    return null;
+                }
+            });
+            const results = await Promise.all(promises);
+            return { moviesWithDetails: results.filter(movie => movie !== null), hasAuthError: authError };
+        }
+
+        function renderMovies(movies) {
+            const fragment = document.createDocumentFragment();
+            movies.forEach((movie, index) => {
+                const node = document.importNode(ELEMENTS.template.content, true);
+                const card = node.querySelector('article');
+                card.style.animation = `fadeInUp 0.5s ease forwards ${index * 0.05}s`;
+                card.style.opacity = '0';
+                node.querySelector('.card-poster').src = movie.poster;
+                node.querySelector('.card-poster').alt = `Постер ${movie.title}`;
+                node.querySelector('.card-rating').textContent = movie.imdbRating;
+                node.querySelector('.card-year').textContent = movie.year;
+                node.querySelector('.card-title').textContent = movie.title;
+                node.querySelector('.card-title').title = movie.title;
+                node.querySelector('.card-plot').textContent = movie.plotUA;
+                if (movie.imdbID) node.querySelector('.card-imdb-btn').href = `https://www.imdb.com/title/${movie.imdbID}/`;
+                else node.querySelector('.card-imdb-btn').href = `https://www.imdb.com/find?q=${encodeURIComponent(movie.title)}`;
+                node.querySelector('.card-tmdb-btn').href = `https://www.themoviedb.org/search?query=${encodeURIComponent(movie.title)}`;
+                fragment.appendChild(node);
+            });
+            ELEMENTS.resultsGrid.appendChild(fragment);
+            if (movies.length > 0) {
+                const countMsg = document.createElement('p');
+                countMsg.className = "col-span-full text-center text-gray-500 mt-4 text-sm";
+                countMsg.textContent = `Показано фільмів: ${movies.length}`;
+                ELEMENTS.resultsGrid.appendChild(countMsg);
+            }
+        }
+
+        const style = document.createElement('style');
+        style.innerHTML = `@keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }`;
+        document.head.appendChild(style);
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
