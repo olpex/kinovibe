@@ -569,7 +569,21 @@
                     }
 
                     if (data.Response === "True") {
-                        return { title: data.Title, originalTitleFromGemini: movie.title, year: data.Year, poster: data.Poster !== "N/A" ? data.Poster : fallbackMovie.poster, imdbRating: data.imdbRating !== "N/A" ? data.imdbRating : "-", imdbID: data.imdbID, plotUA: movie.plot };
+                        let isValidMatch = true;
+                        if (movie.year) {
+                            const aiYear = parseInt(movie.year.toString().substring(0, 4));
+                            const omdbYear = parseInt(data.Year.substring(0, 4));
+                            // Відхиляємо знахідку OMDb, якщо різниця в роках більше ніж 1 (уникаємо підміни однойменними старими фільмами)
+                            if (!isNaN(aiYear) && !isNaN(omdbYear) && Math.abs(aiYear - omdbYear) > 1) {
+                                isValidMatch = false;
+                            }
+                        }
+                        
+                        if (isValidMatch) {
+                            return { title: data.Title, originalTitleFromGemini: movie.title, year: data.Year, poster: data.Poster !== "N/A" ? data.Poster : fallbackMovie.poster, imdbRating: data.imdbRating !== "N/A" ? data.imdbRating : "-", imdbID: data.imdbID, plotUA: movie.plot };
+                        } else {
+                            return fallbackMovie;
+                        }
                     } else {
                         // Якщо зовсім не знайдено - повертаємо заглушку замість null
                         return fallbackMovie; 
