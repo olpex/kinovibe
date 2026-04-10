@@ -2,8 +2,11 @@ const https = require('https');
 
 const MODELS = [
     'meta-llama/llama-3.3-70b-instruct:free',
-    'nousresearch/hermes-3-llama-3.1-405b:free',
-    'google/gemma-3-27b-it:free'
+    'qwen/qwen3-next-80b-a3b-instruct:free',
+    'nvidia/nemotron-3-super-120b-a12b:free',
+    'google/gemma-3-27b-it:free',
+    'openai/gpt-oss-120b:free',
+    'cognitivecomputations/dolphin-mistral-24b-venice-edition:free'
 ];
 
 function httpsPost(url, token, data) {
@@ -108,14 +111,15 @@ module.exports = async function handler(req, res) {
                     break;
                 }
             } catch (e) {
-                allErrors.push(`[${model}] ${e.message}`);
+                allErrors.push(`[${model}] Запит впав: ${e.message}`);
                 break;
             }
         }
         
         if (!success) {
-            if (data?.error?.message?.includes('Provider returned error')) {
-                allErrors.push(`[${model}] Provider returned error (retries exhausted)`);
+            const finalMsg = data?.error?.message || (result ? `HTTP ${result.status}` : 'Fail');
+            if (!allErrors.some(e => e.includes(`[${model}]`))) {
+                allErrors.push(`[${model}] ${finalMsg} (exhausted)`);
             }
             continue;
         }
