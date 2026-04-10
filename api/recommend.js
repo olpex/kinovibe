@@ -3,8 +3,8 @@ const https = require('https');
 // Безкоштовні моделі на OpenRouter
 const MODELS = [
     'meta-llama/llama-3.3-70b-instruct:free',
-    'mistralai/mistral-nemo:free',
-    'google/gemini-2.0-flash-lite-preview-02-05:free'
+    'nousresearch/hermes-3-llama-3.1-405b:free',
+    'google/gemma-3-27b-it:free'
 ];
 
 function httpsPost(url, token, data) {
