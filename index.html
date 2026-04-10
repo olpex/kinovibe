@@ -272,8 +272,9 @@
             template: document.getElementById('movieCardTemplate')
         };
 
+        const DEFAULT_OMDB_KEY = '541f2a60';
         let keys = {
-            omdb: localStorage.getItem('omdb_key') || ''
+            omdb: localStorage.getItem('omdb_key') || DEFAULT_OMDB_KEY
         };
 
         function init() {
