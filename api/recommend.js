@@ -78,12 +78,9 @@ module.exports = async function handler(req, res) {
                 const msg = data?.error?.message || `HTTP ${result.status}`;
                 lastError = `[${model}] ${msg}`;
                 
-                // Якщо помилка лімітів (429) або сервіс недоступний, пробуємо наступну безкоштовну модель
-                if (result.status === 429 || result.status === 502 || result.status === 503) {
-                    continue; 
-                }
-                
-                return res.status(200).json({ error: msg });
+                // Переходимо до наступної моделі при будь-якій помилці (перевантаження, немає вільних серверів тощо),
+                // окрім 401 (коли ключ гарантовано невірний)
+                continue;
             }
 
             let text = data?.choices?.[0]?.message?.content;
