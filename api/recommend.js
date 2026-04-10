@@ -1,11 +1,11 @@
 const https = require('https');
 
 const MODELS = [
-    'nvidia/llama-3.1-nemotron-70b-instruct:free',
-    'meta-llama/llama-3.1-8b-instruct:free',
-    'mistralai/mistral-nemo:free',
-    'google/gemma-2-9b-it:free',
-    'meta-llama/llama-3-8b-instruct:free'
+    'meta-llama/llama-3.3-70b-instruct:free',
+    'nousresearch/hermes-3-llama-3.1-405b:free',
+    'nvidia/nemotron-3-super-120b-a12b:free',
+    'google/gemma-3-27b-it:free',
+    'qwen/qwen3-next-80b-a3b-instruct:free'
 ];
 
 function httpsPost(url, token, data) {
