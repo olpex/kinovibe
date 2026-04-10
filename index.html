@@ -480,6 +480,7 @@
             const sortedYears = [...(years || [])].map(String).sort();
             const sortedGenres = [...(genres || [])].map(String).sort();
             return JSON.stringify({
+                version: 2,
                 years: sortedYears,
                 genres: sortedGenres,
                 wishes: normalizeText(wishes)
@@ -709,7 +710,11 @@
             const genreText = genres.length > 0 ? genres.join(', ') : 'Не має значення';
             const cacheKey = buildAICacheKey(years, genres, wishes);
             if (AI_RECOMMENDATION_CACHE.has(cacheKey)) {
-                return AI_RECOMMENDATION_CACHE.get(cacheKey);
+                const cachedMovies = AI_RECOMMENDATION_CACHE.get(cacheKey);
+                if (Array.isArray(cachedMovies) && cachedMovies.length >= 4) {
+                    return cachedMovies;
+                }
+                AI_RECOMMENDATION_CACHE.delete(cacheKey);
             }
             try {
                 const response = await fetchWithRetry('/api/recommend', {
@@ -731,7 +736,9 @@
                 const cleanJsonStr = cleanJSONString(data.text);
                 const movies = JSON.parse(cleanJsonStr);
                 if (!Array.isArray(movies)) throw new Error("Відповідь моделі не була масивом.");
-                AI_RECOMMENDATION_CACHE.set(cacheKey, movies);
+                if (movies.length >= 4) {
+                    AI_RECOMMENDATION_CACHE.set(cacheKey, movies);
+                }
                 return movies;
             } catch (error) {
                 throw new Error(`${error.message}`);

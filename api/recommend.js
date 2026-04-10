@@ -10,6 +10,7 @@ const REQUEST_TIMEOUT_MS = 18000;
 const MAX_MODELS_TO_TRY = 3;
 const MAX_RETRIES_PER_MODEL = 2;
 const RETRY_DELAY_MS = 450;
+const MIN_RECOMMENDATIONS = 4;
 
 function httpsPost(url, token, data, timeoutMs = REQUEST_TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
@@ -58,6 +59,35 @@ function normalizeFilterArray(input, ignoredValues = []) {
     )];
 }
 
+function normalizeModelResponse(text) {
+    let cleaned = (text || '').trim();
+    if (cleaned.startsWith('```json')) cleaned = cleaned.substring(7);
+    else if (cleaned.startsWith('```')) cleaned = cleaned.substring(3);
+    if (cleaned.endsWith('```')) cleaned = cleaned.substring(0, cleaned.length - 3);
+    cleaned = cleaned.trim();
+
+    let parsed = JSON.parse(cleaned);
+    if (!Array.isArray(parsed) && parsed && typeof parsed === 'object') {
+        const firstKey = Object.keys(parsed)[0];
+        if (Array.isArray(parsed[firstKey])) {
+            parsed = parsed[firstKey];
+        }
+    }
+
+    if (!Array.isArray(parsed)) {
+        throw new Error('Відповідь моделі не була масивом.');
+    }
+
+    return parsed
+        .filter((item) => item && typeof item === 'object')
+        .map((item) => ({
+            title: typeof item.title === 'string' ? item.title.trim() : '',
+            year: typeof item.year === 'string' || typeof item.year === 'number' ? String(item.year).trim() : '',
+            plot: typeof item.plot === 'string' ? item.plot.trim() : ''
+        }))
+        .filter((item) => item.title && item.year);
+}
+
 module.exports = async function handler(req, res) {
     res.setHeader('Content-Type', 'application/json');
 
@@ -84,6 +114,7 @@ module.exports = async function handler(req, res) {
     const genreRule = selectedGenres.length > 0
         ? `Жанри (строго): ${selectedGenres.join(', ')}. Кожен фільм повинен відповідати хоча б одному із цих жанрів.`
         : 'Жанри: без обмежень.';
+    const minResultTarget = Math.max(MIN_RECOMMENDATIONS, Math.min(6, selectedYears.length > 1 ? selectedYears.length : 4));
 
     const prompt = `Ти експерт з підбору фільмів. Поверни список РЕАЛЬНИХ, ІСНУЮЧИХ ПОВНОМЕТРАЖНИХ ФІЛЬМІВ (не серіали), які максимально відповідають запиту.
 
@@ -98,8 +129,9 @@ module.exports = async function handler(req, res) {
 3) Якщо задані жанри - кожен фільм має підходити щонайменше під один із жанрів.
 4) Тематична близькість до запиту обов'язкова: відкидай слабко релевантні варіанти.
 5) Вкажи оригінальну англійську назву точно як на IMDb.
+6) Якщо існує кілька релевантних варіантів, не зупиняйся на одному. Заповни список максимально повно.
 
-Поверни ТІЛЬКИ JSON-масив без markdown. Кількість: від 5 до 9 фільмів (або менше, якщо строгі критерії сильно обмежують вибір).
+Поверни ТІЛЬКИ JSON-масив без markdown. Цільова кількість: від ${minResultTarget} до 9 фільмів.
 Кожен елемент:
 {
   "title": "Original English Title",
@@ -108,6 +140,7 @@ module.exports = async function handler(req, res) {
 }`;
 
     let allErrors = [];
+    let bestPartialResults = [];
 
     for (const model of MODELS.slice(0, MAX_MODELS_TO_TRY)) {
         const payload = {
@@ -156,27 +189,30 @@ module.exports = async function handler(req, res) {
             continue;
         }
 
-        let text = data.choices[0].message.content;
-        if (!text) { allErrors.push(`[${model}] порожня відповідь`); continue; }
+        const text = data.choices[0].message.content;
+        if (!text) {
+            allErrors.push(`[${model}] порожня відповідь`);
+            continue;
+        }
 
-            text = text.trim();
-            if (text.startsWith('```json')) text = text.substring(7);
-            else if (text.startsWith('```')) text = text.substring(3);
-            if (text.endsWith('```')) text = text.substring(0, text.length - 3);
-            text = text.trim();
-
-            let parsed;
-            try { 
-                parsed = JSON.parse(text); 
-                if (!Array.isArray(parsed) && typeof parsed === 'object') {
-                    const firstKey = Object.keys(parsed)[0];
-                    if (Array.isArray(parsed[firstKey])) {
-                        text = JSON.stringify(parsed[firstKey]);
-                    }
+        try {
+            const parsed = normalizeModelResponse(text);
+            if (parsed.length < MIN_RECOMMENDATIONS) {
+                if (parsed.length > bestPartialResults.length) {
+                    bestPartialResults = parsed;
                 }
-            } catch (e) {}
+                allErrors.push(`[${model}] замало результатів: ${parsed.length}`);
+                continue;
+            }
 
-            return res.status(200).json({ text });
+            return res.status(200).json({ text: JSON.stringify(parsed) });
+        } catch (e) {
+            allErrors.push(`[${model}] не вдалося розібрати JSON: ${e.message}`);
+        }
+    }
+
+    if (bestPartialResults.length > 0) {
+        return res.status(200).json({ text: JSON.stringify(bestPartialResults) });
     }
 
     return res.status(200).json({ error: `Всі безкоштовні нейромережі недоступні. Деталі: ${allErrors.join(' | ')}` });
